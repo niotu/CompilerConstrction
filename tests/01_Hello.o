@@ -1,0 +1,5 @@
+class Hello is
+    this() is
+        // empty constructor, program ends immediately
+    end
+end

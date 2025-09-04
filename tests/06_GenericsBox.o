@@ -1,0 +1,17 @@
+class Box[T] is
+    var value : T := T()
+    method set(v : T) : Void is
+        value := v
+    end
+    method get() : T is
+        return value
+    end
+end
+
+class TestBox is
+    this() is
+        var b := Box[Integer]()
+        b.set(42)
+        var x := b.get()
+    end
+end

@@ -1,0 +1,12 @@
+class Factorial is
+    method Fact(n : Integer) : Integer is
+        if n.Less(2) then
+            return 1
+        else
+            return n.Mul(self.Fact(n.Dec()))
+        end
+    end
+
+    this() is
+    end
+end

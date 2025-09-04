@@ -1,0 +1,8 @@
+class TypeMismatch is
+    method GetInt() : Integer is
+        return 3.14
+    end
+
+    this() is
+    end
+end

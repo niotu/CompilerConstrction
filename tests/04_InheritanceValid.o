@@ -1,0 +1,18 @@
+class Animal is
+    method Speak() : String is
+        return "..."
+    end
+end
+
+class Dog extends Animal is
+    method Speak() : String is
+        return "Woof"
+    end
+end
+
+class Test is
+    this() is
+        var d := Dog()
+        var s := d.Speak()
+    end
+end

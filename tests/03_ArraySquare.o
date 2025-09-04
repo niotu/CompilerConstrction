@@ -1,0 +1,10 @@
+class ArraySquare is
+    this() is
+        var a : Array[Integer](5)
+        var i := 0
+        while i < a.Length loop
+            a.set(i, i * i)
+            i := i + 1
+        end
+    end
+end

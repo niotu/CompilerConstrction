@@ -1,0 +1,19 @@
+class Shape is
+    method Area() : Real is
+        return 0.0
+    end
+end
+
+class Circle extends Shape is
+    var r : Real := 1.0
+    method Area() : Real is
+        return r.Mul(r).Mul(3.14159)
+    end
+end
+
+class PolyTest is
+    this() is
+        var s : Shape := Circle()
+        var a := s.Area()
+    end
+end

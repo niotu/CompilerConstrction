@@ -1,0 +1,11 @@
+class Ambiguous is
+    method Foo(a : Integer) : Integer is
+        return a
+    end
+    method Foo(a : Integer) : Integer is
+        return a.Plus(1)
+    end
+
+    this() is
+    end
+end

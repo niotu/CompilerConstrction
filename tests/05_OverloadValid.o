@@ -1,0 +1,12 @@
+class Calc is
+    method Add(a : Integer, b : Integer) : Integer is
+        return a.Plus(b)
+    end
+
+    method Add(a : Real, b : Real) : Real is
+        return a.Plus(b)
+    end
+
+    this() is
+    end
+end

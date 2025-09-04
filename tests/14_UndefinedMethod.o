@@ -1,0 +1,7 @@
+class UseUndefined is
+    this() is
+        var a : Integer(10)
+        // calling a method that doesn't exist on Integer
+        var b :Integer(a.NonExistingMethod())
+    end
+end

@@ -1,0 +1,11 @@
+class A is
+    var x : Integer := 1
+end
+
+class OutsideAssign is
+    this() is
+        var a := A()
+        // direct field assignment from outside should be forbidden by spec
+        a.x := 5
+    end
+end
