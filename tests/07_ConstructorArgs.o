@@ -1,5 +1,5 @@
 class App is
-    var x : Integer := 0
+    var x : Integer(0)
     this(a : Integer) is
         x := a
     end

@@ -1,5 +1,5 @@
 class Factorial is
-    method Fact(n : Integer) : Integer is
+    method fact(n : Integer) : Integer is
         if n.Less(2) then
             return 1
         else
@@ -8,5 +8,13 @@ class Factorial is
     end
 
     this() is
+    end
+end
+
+calc Main is
+    this() is
+        var f : Factorial
+        var result : Integer
+        result := f.fact(5)
     end
 end

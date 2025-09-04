@@ -5,7 +5,7 @@ class Ambiguous is
     method Foo(a : Integer) : Integer is
         return a.Plus(1)
     end
-
+    // Duplication method with the same signature.
     this() is
     end
 end
