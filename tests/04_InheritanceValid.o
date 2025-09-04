@@ -1,18 +1,19 @@
 class Animal is
-    method Speak() : String is
-        return "..."
+    method Speak() : Integer is
+        return 11111
     end
 end
 
 class Dog extends Animal is
-    method Speak() : String is
-        return "Woof"
+    method Speak() : Integer is
+        return 22222
     end
 end
 
 class Test is
     this() is
-        var d := Dog()
-        var s := d.Speak()
+        var d : Animal
+        d := Dog
+        var s : Integer(d.Speak()) \\ 22222
     end
 end

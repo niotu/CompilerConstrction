@@ -1,6 +1,6 @@
 class Box[T] is
-    var value : T := T()
-    method set(v : T) : Void is
+    var value : T
+    method set(v : T) is
         value := v
     end
     method get() : T is
@@ -10,8 +10,8 @@ end
 
 class TestBox is
     this() is
-        var b := Box[Integer]()
+        var b : Box[Integer]()
         b.set(42)
-        var x := b.get()
+        var x : Integer(b.get())
     end
 end

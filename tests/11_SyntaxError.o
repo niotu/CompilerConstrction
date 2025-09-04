@@ -1,6 +1,6 @@
 class BadSyntax is
     this() is
-        var x := 10
-        if x > 5 then
+        var x : Integer(10) 
+        if x.Less(5) then
             x := x + 1
         // missing 'end' for if and missing 'end' for class

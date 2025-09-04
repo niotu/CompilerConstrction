@@ -1,12 +1,29 @@
 class Calc is
-    method Add(a : Integer, b : Integer) : Integer is
-        return a.Plus(b)
+    var current : Integer(0)
+
+    method Add(a : Integer) : Integer is
+        current :=current.Plus(a)
+        return this
     end
 
-    method Add(a : Real, b : Real) : Real is
-        return a.Plus(b)
+    method Add(a : Real) : Real is
+        current := current.Plus(a)
+        return this
+    end
+    
+    method getResult : Integer is
+        return current
     end
 
     this() is
+
+    end
+end
+
+calc Main is
+    this() is
+        var calc : Calc
+        var result : Integer
+        result := calc.add(5).add(3).getResult()
     end
 end

@@ -4,7 +4,7 @@ class ArraySquare is
         var i : Integer(0)
         while i < a.Length loop
             a.set(i, i * i)
-            i := i + 1
+            i := i.Plus(1)
         end
     end
 end
