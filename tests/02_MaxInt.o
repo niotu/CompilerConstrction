@@ -2,7 +2,7 @@ class MaxInt is
     method Max(arr : Array[Integer]) : Integer is
         var i : Integer(0)
         var max : Integer(arr.get(0))
-        while i < arr.Length loop
+        while i.Less(arr.Length) loop
             if arr.get(i).Greater(max) then
                 max := arr.get(i)
             end
