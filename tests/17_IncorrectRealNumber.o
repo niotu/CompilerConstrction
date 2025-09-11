@@ -1,0 +1,6 @@
+class Main is
+    this() is
+        // Unexpected 2 dots in real number
+        var i : Real(22.22.22) 
+        i := i.Mult(2)
+end

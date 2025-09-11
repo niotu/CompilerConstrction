@@ -1,0 +1,7 @@
+class Main is
+    this() is
+        // Unexpected symbols in number: 'a'
+        var x : Integer(2a2a2) 
+        if x.Less(5) then
+            x := x.Plus(1)
+end
