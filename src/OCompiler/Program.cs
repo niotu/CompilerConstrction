@@ -4,7 +4,7 @@ using OCompiler.Utils;
 namespace OCompiler;
 
 /// <summary>
-/// Компилятор языка O - L17 Team
+/// Компилятор языка O - LI7 Team
 /// Dmitriy Lukiyanov (SD-03), Ramil Aminov (SD-01)
 /// </summary>
 public class Program
@@ -23,18 +23,18 @@ public class Program
         
         if (!File.Exists(fileName))
         {
-            Console.WriteLine($"❌ Ошибка: файл '{fileName}' не найден.");
+            Console.WriteLine($"** Error '{fileName}' not found");
             return;
         }
 
         try
         {
-            Console.WriteLine($"🔍 Компиляция файла: {fileName}");
+            Console.WriteLine($"** File compiling: {fileName}...");
             CompileFile(fileName);
         }
         catch (CompilerException ex)
         {
-            Console.WriteLine($"❌ Ошибка компиляции: {ex.Message}");
+            Console.WriteLine($"** Compilation error: {ex.Message}");
             Environment.Exit(1);
         }
         catch (Exception ex)
@@ -50,25 +50,23 @@ public class Program
 
     private static void PrintHeader()
     {
-        Console.WriteLine("╔══════════════════════════════════════════════╗");
-        Console.WriteLine("║          Компилятор языка O v1.0             ║");
-        Console.WriteLine("║              L17 Team                        ║");
-        Console.WriteLine("║  Dmitriy Lukiyanov (SD-03)                   ║");
-        Console.WriteLine("║  Ramil Aminov (SD-01)                        ║");
-        Console.WriteLine("╚══════════════════════════════════════════════╝");
+        Console.WriteLine("╔════════════════════════════════════╗");
+        Console.WriteLine("║          O Lang compiler           ║");
+        Console.WriteLine("║              LI7 Team              ║");
+        Console.WriteLine("╚════════════════════════════════════╝");
         Console.WriteLine();
     }
 
     private static void PrintUsage()
     {
-        Console.WriteLine("📋 Использование:");
+        Console.WriteLine("** Usage:");
         Console.WriteLine("  OCompiler <file.o> [options]");
         Console.WriteLine();
-        Console.WriteLine("🎯 Опции:");
-        Console.WriteLine("  --debug        Показать подробную отладочную информацию");
-        Console.WriteLine("  --tokens-only  Только лексический анализ (вывод токенов)");
+        Console.WriteLine("** Options:");
+        Console.WriteLine("  --debug        Show all debug information");
+        Console.WriteLine("  --tokens-only  Lexical analysis only(tokens output)");
         Console.WriteLine();
-        Console.WriteLine("📁 Примеры тестовых файлов:");
+        Console.WriteLine("** Test examples:");
         Console.WriteLine("  tests/01_Hello.o");
         Console.WriteLine("  tests/03_ArraySquare.o");
         Console.WriteLine("  tests/04_InheritanceValid.o");
@@ -79,14 +77,14 @@ public class Program
     {
         // Чтение исходного кода
         string sourceCode = File.ReadAllText(fileName);
-        Console.WriteLine($"📖 Прочитано {sourceCode.Length} символов");
+        Console.WriteLine($"** Symbols read: {sourceCode.Length} ");
 
         // Лексический анализ
-        Console.WriteLine("🔤 Запуск лексического анализа...");
+        Console.WriteLine("** Starting lexical analysis...");
         var lexer = new OLexer(sourceCode, fileName);
         var tokens = lexer.Tokenize();
         
-        Console.WriteLine($"✅ Лексический анализ завершен. Найдено {tokens.Count} токенов.");
+        Console.WriteLine($"** Lexical analysis finished. Detected {tokens.Count} tokens.");
 
         // Показываем токены, если это запрошено
         if (Environment.GetCommandLineArgs().Contains("--tokens-only"))
@@ -115,8 +113,7 @@ public class Program
 
     private static void PrintTokens(List<Token> tokens)
     {
-        Console.WriteLine("\n📝 Найденные токены:");
-        Console.WriteLine("╔════════════════════════════════════════════════════╗");
+        Console.WriteLine("\n** Tokens detected:\n");
         
         for (int i = 0; i < tokens.Count; i++)
         {
@@ -124,10 +121,9 @@ public class Program
             if (token.Type == TokenType.EOF) break;
             
             string value = string.IsNullOrEmpty(token.Value) ? "" : $"'{token.Value}'";
-            Console.WriteLine($"║ {i+1,3}: {token.Type,-18} {value,-15} @ {token.Position.Line}:{token.Position.Column}");
+            Console.WriteLine($"  {i+1,3}: {token.Type,-18} {value,-15} @ {token.Position.Line}:{token.Position.Column}");
         }
         
-        Console.WriteLine("╚════════════════════════════════════════════════════╝");
-        Console.WriteLine($"Всего токенов: {tokens.Count - 1} (без EOF)");
+        Console.WriteLine($"\n** Tokens calculated: {tokens.Count - 1} (except EOF)");
     }
 }

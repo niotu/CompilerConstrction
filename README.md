@@ -3,6 +3,21 @@
 - Files 01-10: Intended to be valid (should pass typical syntax + semantic checks).
 - Files 11-15: Intended to fail for specific reasons (syntax error, type error, forbidden field assignment, undefined method, ambiguous overload).
 
+# How to run
+
+- Install [dotnet](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-9.0.305-windows-x64-installer)
+- Setup the env
+
+``` shell
+dotnet build
+```
+
+- Run
+
+``` shell
+dotnet run --project src/OCompiler tests/<test_name> --tokens-only
+```
+
 ### Correct tests
 
 |Filename| Description |
