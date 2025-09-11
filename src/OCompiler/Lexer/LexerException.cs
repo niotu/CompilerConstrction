@@ -3,20 +3,20 @@ using OCompiler.Utils;
 namespace OCompiler.Lexer;
 
 /// <summary>
-/// Исключение лексического анализатора
+/// Lexer exception (lexical error)
 /// </summary>
 public class LexerException : CompilerException
 {
     public Position Position { get; }
 
     public LexerException(string message, Position position) 
-        : base($"Лексическая ошибка в {position}: {message}")
+        : base($"Lexical error at {position}: {message}")
     {
         Position = position;
     }
 
     public LexerException(string message, Position position, Exception innerException) 
-        : base($"Лексическая ошибка в {position}: {message}", innerException)
+        : base($"Lexical error at {position}: {message}", innerException)
     {
         Position = position;
     }

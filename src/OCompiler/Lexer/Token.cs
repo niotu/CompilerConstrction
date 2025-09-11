@@ -1,7 +1,7 @@
 namespace OCompiler.Lexer;
 
 /// <summary>
-/// Токен языка O
+/// O language token
 /// </summary>
 public readonly struct Token : IEquatable<Token>
 {
@@ -35,7 +35,7 @@ public readonly struct Token : IEquatable<Token>
     }
 
     /// <summary>
-    /// Проверяет, является ли токен ключевым словом
+    /// Checks if the token is a keyword
     /// </summary>
     public bool IsKeyword()
     {
@@ -43,7 +43,7 @@ public readonly struct Token : IEquatable<Token>
     }
 
     /// <summary>
-    /// Проверяет, является ли токен литералом
+    /// Checks if the token is a literal
     /// </summary>
     public bool IsLiteral()
     {
@@ -53,7 +53,7 @@ public readonly struct Token : IEquatable<Token>
     }
 
     /// <summary>
-    /// Проверяет, является ли токен оператором
+    /// Checks if the token is an operator
     /// </summary>
     public bool IsOperator()
     {
@@ -63,7 +63,7 @@ public readonly struct Token : IEquatable<Token>
     }
 
     /// <summary>
-    /// Проверяет, является ли токен разделителем
+    /// Checks if the token is a separator
     /// </summary>
     public bool IsSeparator()
     {
