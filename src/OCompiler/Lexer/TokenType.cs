@@ -1,15 +1,15 @@
 namespace OCompiler.Lexer;
 
 /// <summary>
-/// Типы токенов языка O
-/// Соответствует спецификации Project O
+/// O language token types
+/// Corresponds to Project O specification
 /// </summary>
 public enum TokenType
 {
-    // Конец файла
+    // End of file
     EOF,
     
-    // Ключевые слова (в порядке алфавита)
+    // Keywords (in alphabetical order)
     CLASS,      // class
     ELSE,       // else  
     END,        // end
@@ -23,29 +23,29 @@ public enum TokenType
     THIS,       // this
     VAR,        // var
     WHILE,      // while
-    
-    // Литералы
-    IDENTIFIER,         // имена переменных, классов, методов
+
+    // Literals
+    IDENTIFIER,         // variable, class, method names
     INTEGER_LITERAL,    // 123, 0, -456
     REAL_LITERAL,       // 3.14, 0.5, -2.71
     BOOLEAN_LITERAL,    // true, false
-    
-    // Операторы и разделители
+
+    // Operators and separators
     ASSIGN,         // :=
-    ARROW,          // => (для коротких методов)
+    ARROW,          // => (for short methods)
     COLON,          // :
     DOT,            // .
     COMMA,          // ,
     
-    // Скобки
+    // Brackets
     LPAREN,         // (
     RPAREN,         // )
     LBRACKET,       // [
     RBRACKET,       // ]
-    
-    // Комментарии (обычно игнорируются)
-    COMMENT,        // // однострочный комментарий
-    
-    // Ошибка
-    UNKNOWN         // неизвестный символ
+
+    // Comments (usually ignored)
+    COMMENT,        // // single-line comment
+
+    // Error
+    UNKNOWN         // unknown character
 }

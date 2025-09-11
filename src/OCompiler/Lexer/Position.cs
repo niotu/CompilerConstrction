@@ -1,7 +1,7 @@
 namespace OCompiler.Lexer;
 
 /// <summary>
-/// Позиция в исходном коде (строка, столбец, файл)
+/// Position in source code (line, column, optional file name)
 /// </summary>
 public readonly struct Position : IEquatable<Position>
 {

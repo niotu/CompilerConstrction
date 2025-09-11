@@ -4,7 +4,8 @@ using OCompiler.Utils;
 namespace OCompiler;
 
 /// <summary>
-/// Компилятор языка O - LI7 Team
+/// O language compiler main program
+/// Part of Compiler Construction course at Innopolis University
 /// Dmitriy Lukiyanov (SD-03), Ramil Aminov (SD-01)
 /// </summary>
 public class Program
@@ -39,7 +40,7 @@ public class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"💥 Внутренняя ошибка: {ex.Message}");
+            Console.WriteLine($"** Internal error: {ex.Message}");
             if (args.Contains("--debug"))
             {
                 Console.WriteLine($"Stack trace:\n{ex.StackTrace}");
@@ -50,10 +51,10 @@ public class Program
 
     private static void PrintHeader()
     {
-        Console.WriteLine("╔════════════════════════════════════╗");
-        Console.WriteLine("║          O Lang compiler           ║");
-        Console.WriteLine("║              LI7 Team              ║");
-        Console.WriteLine("╚════════════════════════════════════╝");
+        Console.WriteLine("╔═══════════════════════════════════╗");
+        Console.WriteLine("║         O Language Compiler       ║");
+        Console.WriteLine("║             LI7 Team              ║");
+        Console.WriteLine("╚═══════════════════════════════════╝");
         Console.WriteLine();
     }
 
@@ -93,22 +94,17 @@ public class Program
             return;
         }
 
-        // TODO: Синтаксический анализ
-        Console.WriteLine("🔧 Синтаксический анализ (TODO)");
+        // TODO: Syntax Analysis
+        Console.WriteLine("** Syntax analysis (TODO)");
         // var parser = new OParser(tokens);
         // var ast = parser.Parse();
-        
-        // TODO: Семантический анализ
-        Console.WriteLine("🧠 Семантический анализ (TODO)");
+
+        // TODO: Semantic Analysis
+        Console.WriteLine("** Semantic analysis (TODO)");
         // var analyzer = new SemanticAnalyzer();
         // analyzer.Analyze(ast);
-        
-        // TODO: Генерация кода
-        Console.WriteLine("⚡ Генерация кода (TODO)");
-        // var generator = new CodeGenerator();
-        // generator.Generate(ast);
-        
-        Console.WriteLine("🎉 Компиляция завершена успешно!");
+
+        Console.WriteLine("** Compilation completed successfully!");
     }
 
     private static void PrintTokens(List<Token> tokens)

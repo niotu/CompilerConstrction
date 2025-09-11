@@ -10,7 +10,7 @@ public class OLexer
     private int _line;
     private int _column;
     
-    // Словарь ключевых слов языка O
+    // Keywords mapping to token types 
     private static readonly Dictionary<string, TokenType> Keywords = new()
     {
         { "class", TokenType.CLASS },
@@ -27,7 +27,7 @@ public class OLexer
         { "var", TokenType.VAR },
         { "while", TokenType.WHILE },
         
-        // Булевы литералы тоже считаются ключевыми словами
+        // Boolean literals are treated as keywords too
         { "true", TokenType.BOOLEAN_LITERAL },
         { "false", TokenType.BOOLEAN_LITERAL }
     };
@@ -178,21 +178,21 @@ public class OLexer
         var number = new StringBuilder();
         bool isReal = false;
         
-        // Читаем целую часть
+        // Read integer part
         while (!IsAtEnd() && char.IsDigit(Peek()))
         {
             number.Append(Peek());
             Advance();
         }
         
-        // Проверяем наличие десятичной точки
+        // Check for fractional part with separator '.'
         if (!IsAtEnd() && Peek() == '.' && char.IsDigit(PeekNext()))
         {
             isReal = true;
             number.Append(Peek()); // добавляем точку
             Advance();
             
-            // Читаем дробную часть
+            // Read fractional part
             while (!IsAtEnd() && char.IsDigit(Peek()))
             {
                 number.Append(Peek());
@@ -209,9 +209,9 @@ public class OLexer
     private Token ReadIdentifierOrKeyword(Position startPosition)
     {
         var identifier = new StringBuilder();
-        
-        // Первый символ - буква или подчеркивание
-        // Далее - буквы, цифры или подчеркивания
+
+        // First character - letter or underscore
+        // Next - letters, digits or underscores
         while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || Peek() == '_'))
         {
             identifier.Append(Peek());
@@ -219,14 +219,14 @@ public class OLexer
         }
         
         string value = identifier.ToString();
-        
-        // Проверяем, является ли идентификатор ключевым словом
+
+        // Check if the identifier is a keyword
         if (Keywords.TryGetValue(value, out var keywordType))
         {
             return new Token(keywordType, value, startPosition);
         }
         
-        // Обычный идентификатор
+        // Default identifier
         return new Token(TokenType.IDENTIFIER, value, startPosition);
     }
 
@@ -241,7 +241,7 @@ public class OLexer
             if (Peek() == '\n')
             {
                 _line++;
-                _column = 0; // Будет увеличено в Advance()
+                _column = 0; // Will be incremented in Advance()
             }
             Advance();
         }
@@ -295,7 +295,7 @@ public class OLexer
     #region Debugging methods
 
     /// <summary>
-    /// Получает контекст вокруг текущей позиции для отладки
+    /// Get context around current position for error reporting
     /// </summary>
     public string GetContext(int contextSize = 20)
     {
