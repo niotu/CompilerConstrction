@@ -2,10 +2,6 @@ using System.Text;
 
 namespace OCompiler.Lexer;
 
-/// <summary>
-/// Лексический анализатор для языка O
-/// Handwritten lexer с поддержкой всех конструкций языка O
-/// </summary>
 public class OLexer
 {
     private readonly string _sourceCode;
@@ -46,7 +42,7 @@ public class OLexer
     }
 
     /// <summary>
-    /// Токенизирует весь исходный код
+    /// Tokenize whole source code
     /// </summary>
     public List<Token> Tokenize()
     {
@@ -57,32 +53,32 @@ public class OLexer
             try
             {
                 var token = NextToken();
-                if (token.Type != TokenType.COMMENT) // Игнорируем комментарии
+                if (token.Type != TokenType.COMMENT) // Ignore comments
                 {
                     tokens.Add(token);
                 }
             }
             catch (LexerException)
             {
-                // Перебрасываем лексические ошибки как есть
+                // Re-post lexical errors as they are
                 throw;
             }
             catch (Exception ex)
             {
-                // Все остальные ошибки оборачиваем
-                throw new LexerException($"Внутренняя ошибка лексера: {ex.Message}", 
+                //Wrap up all other errors
+                throw new LexerException($"Internal lexer error: {ex.Message}", 
                     CurrentPosition(), ex);
             }
         }
         
-        // Добавляем токен конца файла
+        // Add token of file ending
         tokens.Add(new Token(TokenType.EOF, CurrentPosition()));
         
         return tokens;
     }
 
     /// <summary>
-    /// Получает следующий токен из потока
+    /// Get next token from stream
     /// </summary>
     public Token NextToken()
     {
@@ -96,13 +92,13 @@ public class OLexer
         var startPosition = CurrentPosition();
         char current = Peek();
 
-        // Комментарии
+        // Comments
         if (current == '/' && PeekNext() == '/')
         {
             return ReadComment(startPosition);
         }
 
-        // Двухсимвольные операторы
+        // Two-symbol operators
         if (current == ':' && PeekNext() == '=')
         {
             Advance(2);
@@ -115,7 +111,7 @@ public class OLexer
             return new Token(TokenType.ARROW, "=>", startPosition);
         }
 
-        // Односимвольные операторы и разделители
+        // Single-character operators and delimiters
         switch (current)
         {
             case ':':
@@ -141,33 +137,33 @@ public class OLexer
                 return new Token(TokenType.RBRACKET, "]", startPosition);
         }
 
-        // Числовые литералы
+        // Numeric
         if (char.IsDigit(current))
         {
             return ReadNumber(startPosition);
         }
 
-        // Идентификаторы и ключевые слова
+        // Identificators and keywords
         if (char.IsLetter(current) || current == '_')
         {
             return ReadIdentifierOrKeyword(startPosition);
         }
 
-        // Неизвестный символ - ошибка
-        throw new LexerException($"Неожиданный символ: '{current}' (код: {(int)current})", 
+        // Unknown symbol - error
+        throw new LexerException($"Unexpected symbol: '{current}' (code: {(int)current})", 
             startPosition);
     }
 
-    #region Чтение конкретных типов токенов
+    #region Reading specific token types
 
     private Token ReadComment(Position startPosition)
     {
         var comment = new StringBuilder("//");
         
-        // Пропускаем "//"
+        // Skip "//"
         Advance(2);
         
-        // Читаем до конца строки
+        // Read to the end of the line
         while (!IsAtEnd() && Peek() != '\n' && Peek() != '\r')
         {
             comment.Append(Peek());
@@ -236,7 +232,7 @@ public class OLexer
 
     #endregion
 
-    #region Вспомогательные методы
+    #region Auxiliary methods
 
     private void SkipWhitespace()
     {
@@ -296,7 +292,7 @@ public class OLexer
 
     #endregion
 
-    #region Отладочные методы
+    #region Debugging methods
 
     /// <summary>
     /// Получает контекст вокруг текущей позиции для отладки
