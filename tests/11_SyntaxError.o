@@ -2,5 +2,6 @@ class BadSyntax is
     this() is
         var x : Integer(10) 
         if x.Less(5) then
+            // Unexpected symbol: '+', must be '.Plus()'
             x := x + 1
-        // missing 'end' for if and missing 'end' for class
+        
