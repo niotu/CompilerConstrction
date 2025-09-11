@@ -179,28 +179,61 @@ public class OLexer
         bool isReal = false;
         
         // Read integer part
-        while (!IsAtEnd() && char.IsDigit(Peek()))
-        {
-            number.Append(Peek());
-            Advance();
+        while (!IsAtEnd() && (char.IsDigit(Peek()) || Peek()=='.'))
+        {   
+            if (Peek()=='.')
+            {
+                if (isReal)
+                {   
+                    // Already have a decimal point - this is an error
+                    throw new LexerException($"Multiple decimal points in real number: '{Peek()}' (code: {(int)Peek()})", 
+                startPosition);
+                }
+                 // Check if next character is digit to make it a valid real number
+                if (char.IsDigit(PeekNext()))
+                {
+                    isReal = true;
+                    number.Append(Peek());
+                    Advance();
+                }
+                else
+                {
+                    // Dot not followed by digit - stop reading here
+                    break;
+                }
+            }
+            else
+            {
+                number.Append(Peek());
+                    Advance();   
+            }
         }
+
+
+        string value = number.ToString();
         
-        // Check for fractional part with separator '.'
-        if (!IsAtEnd() && Peek() == '.' && char.IsDigit(PeekNext()))
-        {
-            isReal = true;
-            number.Append(Peek()); // добавляем точку
-            Advance();
-            
-            // Read fractional part
-            while (!IsAtEnd() && char.IsDigit(Peek()))
+        if (!IsAtEnd() && char.IsLetter(Peek()))
+        {   
+            var cur = Peek();
+            // Read the invalid characters to include them in error message
+            while (!IsAtEnd() && char.IsLetterOrDigit(Peek()))
             {
                 number.Append(Peek());
                 Advance();
             }
+            
+            value = number.ToString();
+
+            throw new LexerException($"Invalid character in number: '{cur}' (code: {(int)cur})", 
+                startPosition);
+        }
+
+        if (value.EndsWith('.')){
+            throw new LexerException($"Real number cannot end with a decimal point: '{Peek()}' (code: {(int)Peek()})", 
+                startPosition);
         }
         
-        string value = number.ToString();
+        
         TokenType type = isReal ? TokenType.REAL_LITERAL : TokenType.INTEGER_LITERAL;
         
         return new Token(type, value, startPosition);
