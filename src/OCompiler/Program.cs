@@ -24,26 +24,26 @@ public class Program
         
         if (!File.Exists(fileName))
         {
-            Console.WriteLine($"** Error '{fileName}' not found");
+            Console.WriteLine($"**[ ERR ] Error '{fileName}' not found");
             return;
         }
 
         try
         {
-            Console.WriteLine($"** File compiling: {fileName}...");
+            Console.WriteLine($"**[ INFO ] File compiling: {fileName}...");
             CompileFile(fileName);
         }
         catch (CompilerException ex)
         {
-            Console.WriteLine($"** Compilation error: {ex.Message}");
+            Console.WriteLine($"**[ ERR ] Compilation error: {ex.Message}");
             Environment.Exit(1);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"** Internal error: {ex.Message}");
+            Console.WriteLine($"**[ ERR ] Internal error: {ex.Message}");
             if (args.Contains("--debug"))
             {
-                Console.WriteLine($"Stack trace:\n{ex.StackTrace}");
+                Console.WriteLine($"**[ INFO ] Stack trace:\n{ex.StackTrace}");
             }
             Environment.Exit(1);
         }
@@ -78,14 +78,14 @@ public class Program
     {
         // Чтение исходного кода
         string sourceCode = File.ReadAllText(fileName);
-        Console.WriteLine($"** Symbols read: {sourceCode.Length} ");
+        Console.WriteLine($"**[ INFO ] Symbols read: {sourceCode.Length} ");
 
         // Лексический анализ
-        Console.WriteLine("** Starting lexical analysis...");
+        Console.WriteLine("**[ INFO ] Starting lexical analysis...");
         var lexer = new OLexer(sourceCode, fileName);
         var tokens = lexer.Tokenize();
         
-        Console.WriteLine($"** Lexical analysis finished. Detected {tokens.Count} tokens.");
+        Console.WriteLine($"**[ OK ] Lexical analysis finished. Detected {tokens.Count} tokens.");
 
         // Показываем токены, если это запрошено
         if (Environment.GetCommandLineArgs().Contains("--tokens-only"))
@@ -104,12 +104,12 @@ public class Program
         // var analyzer = new SemanticAnalyzer();
         // analyzer.Analyze(ast);
 
-        Console.WriteLine("** Compilation completed successfully!");
+        Console.WriteLine("**[ OK ] Compilation completed successfully!");
     }
 
     private static void PrintTokens(List<Token> tokens)
     {
-        Console.WriteLine("\n** Tokens detected:\n");
+        Console.WriteLine("\n**[ INFO ] Tokens detected:\n");
         
         for (int i = 0; i < tokens.Count; i++)
         {
@@ -120,6 +120,6 @@ public class Program
             Console.WriteLine($"  {i+1,3}: {token.Type,-18} {value,-15} @ {token.Position.Line}:{token.Position.Column}");
         }
         
-        Console.WriteLine($"\n** Tokens calculated: {tokens.Count - 1} (except EOF)");
+        Console.WriteLine($"\n**[ INFO ] Tokens calculated: {tokens.Count - 1} (except EOF)");
     }
 }
