@@ -14,6 +14,6 @@ class Test is
     this() is
         var d : Animal
         d := Dog
-        var s : Integer(d.Speak()) \\ 22222
+        var s : Integer(d.Speak()) // 22222
     end
 end

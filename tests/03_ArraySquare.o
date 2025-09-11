@@ -3,7 +3,7 @@ class ArraySquare is
         var a : Array[Integer](5)
         var i : Integer(0)
         while i.Less(a.Length) loop
-            a.set(i, i * i)
+            a.set(i, i.Mult(i))
             i := i.Plus(1)
         end
     end
