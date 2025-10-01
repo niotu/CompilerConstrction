@@ -183,13 +183,21 @@ public class OLexer
         {   
             if (Peek()=='.')
             {
-                if (isReal)
+                if (isReal )
                 {   
                     // Already have a decimal point - this is an error
                     throw new LexerException($"Multiple decimal points in real number: '{Peek()}' (code: {(int)Peek()})", 
                 startPosition);
                 }
+
+                if (PeekNext()=='.')
+                {   
+                    // Already have a decimal point - this is an error
+                    throw new LexerException($"Multiple decimal points in real number: '{PeekNext()}' (code: {(int)PeekNext()})", 
+                startPosition);
+                }
                  // Check if next character is digit to make it a valid real number
+                
                 if (char.IsDigit(PeekNext()))
                 {
                     isReal = true;
@@ -212,24 +220,36 @@ public class OLexer
 
         string value = number.ToString();
         
-        if (!IsAtEnd() && char.IsLetter(Peek()))
-        {   
-            var cur = Peek();
-            // Read the invalid characters to include them in error message
-            while (!IsAtEnd() && char.IsLetterOrDigit(Peek()))
-            {
-                number.Append(Peek());
-                Advance();
-            }
+        // if (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || char.IsPunctuation(Peek())))
+        // {   
+        //     var cur = Peek();
+        //     // Read the invalid characters to include them in error message
+        //     while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || char.IsPunctuation(Peek())))
+        //     {
+        //         number.Append(Peek());
+        //         Advance();
+        //     }
             
-            value = number.ToString();
+        //     value = number.ToString();
 
-            throw new LexerException($"Invalid character in number: '{cur}' (code: {(int)cur})", 
+        //     throw new LexerException($"Unexpected symbol in number: '{cur}' (code: {(int)cur})", 
+        //         startPosition);
+        // }
+        if (!IsAtEnd() && (Peek()=='.'))
+        {
+            if (PeekNext()==')')
+            {
+                throw new LexerException($"Real number cannot end with a decimal point: '{Peek()}' (code: {(int)Peek()})", 
+                startPosition);
+            }
+            var cur = PeekNext();
+            throw new LexerException($"Unexpected symbol in number: '{cur}' (code: {(int)cur})", 
                 startPosition);
         }
-
-        if (value.EndsWith('.')){
-            throw new LexerException($"Real number cannot end with a decimal point: '{Peek()}' (code: {(int)Peek()})", 
+        else if (!IsAtEnd() && (char.IsLetterOrDigit(Peek())))
+        {   
+            var cur = Peek();
+            throw new LexerException($"Unexpected symbol in number: '{cur}' (code: {(int)cur})", 
                 startPosition);
         }
         
