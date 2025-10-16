@@ -16,6 +16,7 @@ using System.Globalization;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Diagnostics.CodeAnalysis;
+using OCompiler.Parser;
 
 namespace QUT.Gppg{
     /// <summary>
@@ -71,7 +72,7 @@ namespace QUT.Gppg{
         /// The current value of the "$$" symbolic variable in the parser
         /// </summary>
         [SuppressMessage( "Microsoft.Design", "CA1051:DoNotDeclareVisibleInstanceFields" )]
-        protected TValue CurrentSemanticValue;
+        public TValue CurrentSemanticValue;
 
         /// <summary>
         /// The current value of the "@$" symbolic variable in the parser

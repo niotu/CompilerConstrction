@@ -92,25 +92,27 @@ public class Program
         if (Environment.GetCommandLineArgs().Contains("--tokens-only"))
         {
             PrintTokens(tokens);
-            return;
+            
         }
 
         // TODO: Syntax Analysis
+
         Console.WriteLine("**[ INFO ] Starting syntax analysis...");
-        var newTokens = new ManualLexerAdapter(tokens);
-        var parser = new Parser(newTokens);
+        var scanner = new ManualLexerAdapter(tokens);
+        // Console.WriteLine("Type of output: " ,scanner.GetType());
+        var parser = new OCompiler.Parser.Parser(scanner);
 
         bool success = parser.Parse();
 
         if (!success)
         {
-            Console.WriteLine("Ошибка парсинга");
+            Console.WriteLine("Parsing Error");
             return;
         }
-        var ast = (ProgramNode)parser.CurrentSemanticValue;
+        var ast = (ProgramNode)parser.CurrentSemanticValue.ast;
 
         // TODO: Semantic Analysis
-        Console.WriteLine("** Semantic analysis (TODO)");
+        // Console.WriteLine("** Semantic analysis (TODO)");
         // var analyzer = new SemanticAnalyzer();
         // analyzer.Analyze(ast);
 

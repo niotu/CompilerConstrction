@@ -17,7 +17,10 @@ namespace OCompiler.Parser
         public override int yylex()
         {
             if (!_tokenStream.MoveNext())
-                return (int)Tokens.EOF;
+                {
+                    Console.WriteLine("Lexer is empty (EOF reached)");
+                    return (int)Tokens.EOF;
+                }
 
             var current = _tokenStream.Current;
 
@@ -27,16 +30,16 @@ namespace OCompiler.Parser
             switch (current.Type)
             {
                 case TokenType.IDENTIFIER:
-                    yylval = current.Value;
+                    yylval.str = current.Value;
                     break;
                 case TokenType.INTEGER_LITERAL:
-                    yylval = int.Parse(current.Value);
+                    yylval.integer = int.Parse(current.Value);
                     break;
                 case TokenType.REAL_LITERAL:
-                    yylval = double.Parse(current.Value, System.Globalization.CultureInfo.InvariantCulture);
+                    yylval.real = double.Parse(current.Value, System.Globalization.CultureInfo.InvariantCulture);
                     break;
                 case TokenType.BOOLEAN_LITERAL:
-                    yylval = bool.Parse(current.Value);
+                    yylval.boolean = bool.Parse(current.Value);
                     break;
                 // Для ключевых слов и других токенов yylval не заполняем
             }
