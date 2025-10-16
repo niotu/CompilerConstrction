@@ -1,5 +1,6 @@
 using OCompiler.Lexer;
 using OCompiler.Utils;
+using OCompiler.Parser;
 
 namespace OCompiler;
 
@@ -95,9 +96,18 @@ public class Program
         }
 
         // TODO: Syntax Analysis
-        Console.WriteLine("** Syntax analysis (TODO)");
-        // var parser = new OParser(tokens);
-        // var ast = parser.Parse();
+        Console.WriteLine("**[ INFO ] Starting syntax analysis...");
+        var newTokens = new ManualLexerAdapter(tokens);
+        var parser = new Parser(newTokens);
+
+        bool success = parser.Parse();
+
+        if (!success)
+        {
+            Console.WriteLine("Ошибка парсинга");
+            return;
+        }
+        var ast = (ProgramNode)parser.CurrentSemanticValue;
 
         // TODO: Semantic Analysis
         Console.WriteLine("** Semantic analysis (TODO)");

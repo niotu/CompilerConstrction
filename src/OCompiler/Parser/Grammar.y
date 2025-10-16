@@ -1,6 +1,7 @@
 %using OCompiler.Lexer
 %namespace OCompiler.Parser
 
+
 %union {
     string str;
     int integer;
@@ -87,11 +88,13 @@ Extension
 ClassBody
     : MemberDeclaration
     | MemberDeclaration ClassBody
+    ;
 
 MemberDeclaration
     : VariableDeclaration
     | MethodDeclaration
     | ConstructorDeclaration
+    ;
 
 VariableDeclaration
     : VAR IDENTIFIER COLON Expression

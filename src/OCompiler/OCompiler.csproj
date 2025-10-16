@@ -12,4 +12,8 @@
     <None Include="..\..\tests\*.o" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="YaccLexTools.Gppg" Version="1.5.3.1" />
+  </ItemGroup>
+
 </Project>
