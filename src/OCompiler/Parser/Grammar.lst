@@ -1,9 +1,9 @@
 
 // ==========================================================================
-//  GPPG error listing for yacc source file <Grammar.y - 16.10.2025 15:48:45>
+//  GPPG error listing for yacc source file <Grammar.y - 20.10.2025 15:07:30>
 // ==========================================================================
 //  Version:  1.5.3
-//  DateTime: 16.10.2025 15:49:53
+//  DateTime: 20.10.2025 15:08:05
 // ==========================================================================
 
 
@@ -11,11 +11,22 @@
 %namespace OCompiler.Parser
 
 
+%constructor public Parser(AbstractScanner<ValueType, LexLocation> scanner) : base(scanner)
+//^^^^^^^^^^^^^^^^^------^^----------------------------------------------^^
+// Error: Unknown %keyword in this context
+// Error: Syntax error, unexpected ident
+// Error: This character is invalid in this context
+// Error: This character is invalid in this context
+// Error: This character is invalid in this context
+// Error: This character is invalid in this context
+// ------------------------------------------------
+
 %union {
-    string str;
-    int integer;
-    double real;
-    bool boolean;
+    public string str;
+    public int integer;
+    public double real;
+    public bool boolean;
+    public object ast;
 }
 
 
@@ -70,358 +81,366 @@
 Program
     : ClassDeclarations EOF
     { 
-        $$ = new ProgramNode((List<ClassDeclaration>)$1); 
+        $$.ast = new ProgramNode((List<ClassDeclaration>)$1.ast); 
     }
     ;
 
 ClassDeclarations
     : ClassDeclaration
     { 
-        $$ = new List<ClassDeclaration> { (ClassDeclaration)$1 }; 
+        $$.ast = new List<ClassDeclaration> { (ClassDeclaration)$1.ast }; 
     }
     | ClassDeclaration ClassDeclarations
     { 
-        var list = (List<ClassDeclaration>)$2;
-        list.Insert(0, (ClassDeclaration)$1);
-        $$ = list;
+        var list = (List<ClassDeclaration>)$2.ast;
+        list.Insert(0, (ClassDeclaration)$1.ast);
+        $$.ast = list;
     }
     ;
 
 ClassDeclaration
     : CLASS ClassName Extension IS ClassBody END
     { 
-        $$ = new ClassDeclaration((string)$2, (string)$3, (List<MemberDeclaration>)$5);
+        $$.ast = new ClassDeclaration((string)$2.str, (string)$3.str, (List<MemberDeclaration>)$5.ast);
     }
     ;
 
 ClassName 
     : IDENTIFIER Generic
     {
-        $$ = (string)$1; 
+        $$.str = $1; 
     }
     ;
 
 Generic 
     : /* empty*/
     {
-        $$ = null;
+        $$.str = null;
     }
     | LBRACKET ClassName RBRACKET
     {
-        $$ = (string)$2;
+        $$.str = $2.str;
     }
     ;
 
 Extension 
     : /* empty */
     {
-        $$ = null;
+        $$.str = null;
     }
     | EXTENDS IDENTIFIER
     {
-        $$ = (string)$2;
+        $$.str = $2;
     }
     ;
 
 ClassBody
     : MemberDeclaration
     {
-        $$ = new List<MemberDeclaration> { (MemberDeclaration)$1 };
+        $$.ast = new List<MemberDeclaration> { (MemberDeclaration)$1.ast };
     }
     | MemberDeclaration ClassBody
     {
-        var list = (List<MemberDeclaration>)$2;
-        list.Insert(0, (MemberDeclaration)$1);
-        $$ = list;
+        var list = (List<MemberDeclaration>)$2.ast;
+        list.Insert(0, (MemberDeclaration)$1.ast);
+        $$.ast = list;
     }
     ;
 
 MemberDeclaration
     : VariableDeclaration
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | MethodDeclaration
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | ConstructorDeclaration
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     ;
 
 VariableDeclaration
     : VAR IDENTIFIER COLON Expression
     {
-        $$ = new VariableDeclaration((string)$2, (ExpressionNode)$4);
+        $$.ast = new VariableDeclaration((string)$2, (ExpressionNode)$4.ast);
     }
     ;
 
 MethodDeclaration
     : MethodHeader OptionalMethodBody
     {
-        $$ = new MethodDeclaration((MethodHeaderNode)$1, (MethodBodyNode)$2);
+        $$.ast = new MethodDeclaration((MethodHeaderNode)$1.ast, (MethodBodyNode)$2.ast);
     }
     ;
 
 OptionalMethodBody
     : /* empty */
     {
-        $$ = null;
+        $$.ast = null;
     }
     | MethodBody
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     ;
-    
+
 MethodHeader
     : METHOD IDENTIFIER OptionalParameters ReturnType
     {
-        $$ = new MethodHeaderNode((string)$2, (List<ParameterDeclaration>)$3, (string)$4);
+        $$.ast = new MethodHeaderNode((string)$2, (List<ParameterDeclaration>)$3.ast, (string)$4.str);
     }
     ;
 
 OptionalParameters
     : /* empty */
     {
-        $$ = new List<ParameterDeclaration>();
+        $$.ast = new List<ParameterDeclaration>();
     }
     | Parameters
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     ;
 
 ReturnType
     : /* empty */
     {
-        $$ = null;
+        $$.str = null;
     }
     | COLON IDENTIFIER
     {
-        $$ = (string)$2;
+        $$.str = $2;
     }
     ;
 
 MethodBody
     : IS Body END
     {
-        $$ = $2;
+        $$.ast = $2.ast;
     }
     | ARROW Expression
     {
-        $$ = $2;
+        $$.ast = $2.ast;
     }
     ;
 
 Parameters
     : LPAREN ParameterDeclarations RPAREN
     {
-        $$ = $2;
+        $$.ast = $2.ast;
     }
     ;
 
 ParameterDeclarations
     : ParameterDeclaration
     {
-        $$ = new List<ParameterDeclaration>{ (ParameterDeclaration)$1 };
+        $$.ast = new List<ParameterDeclaration>{ (ParameterDeclaration)$1.ast };
     }
     | ParameterDeclaration COMMA ParameterDeclarations
     {
-        var list = (List<ParameterDeclaration>)$3;
-        list.Insert(0, (ParameterDeclaration)$1);
-        $$ = list;
+        var list = (List<ParameterDeclaration>)$3.ast;
+        list.Insert(0, (ParameterDeclaration)$1.ast);
+        $$.ast = list;
     }
     ;
 
 ParameterDeclaration
     : IDENTIFIER COLON ClassName
     {
-        $$ = new ParameterDeclaration((string)$1, (string)$3);
+        $$.ast = new ParameterDeclaration((string)$1, (string)$3.str);
     }
     ;
 
 Body
-    : VariableDeclaration
+    : /* empty */
     {
-        $$ = new List<Statement>{ (Statement)$1 };
+        $$.ast = new List<Statement>();
+    }
+    | VariableDeclaration
+    {
+        $$.ast = new List<Statement>{ (Statement)$1.ast };
     }
     | Statement
     {
-        $$ = new List<Statement>{ (Statement)$1 };
+        $$.ast = new List<Statement>{ (Statement)$1.ast };
+    }
+    | Body Statement
+    {
+        var list = (List<Statement>)$1.ast;
+        list.Add((Statement)$2.ast);
+        $$.ast = list;
     }
     ;
 
 ConstructorDeclaration
     : THIS OptionalParameters IS Body END
     {
-        $$ = new ConstructorDeclaration((List<ParameterDeclaration>)$2, (List<Statement>)$4);
+        $$.ast = new ConstructorDeclaration((List<ParameterDeclaration>)$2.ast, (List<Statement>)$4.ast);
     }
     ;
 
 Statement
     : Assignment
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | WhileLoop
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | IfStatement
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | ReturnStatement
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     ;
 
 Assignment
     : IDENTIFIER ASSIGN Expression
     {
-        $$ = new Assignment((string)$1, (ExpressionNode)$3);
+        $$.ast = new Assignment((string)$1, (ExpressionNode)$3.ast);
     }
     ;
 
 WhileLoop
     : WHILE Expression LOOP Body END
     {
-        $$ = new WhileLoop((ExpressionNode)$2, (List<Statement>)$4);
+        $$.ast = new WhileLoop((ExpressionNode)$2.ast, (List<Statement>)$4.ast);
     }
     ;
 
 IfStatement
     : IF Expression THEN Body ElsePart END
     {
-        $$ = new IfStatement((ExpressionNode)$2, (List<Statement>)$4, (ElsePart)$5);
+        $$.ast = new IfStatement((ExpressionNode)$2.ast, (List<Statement>)$4.ast, (ElsePart)$5.ast);
     }
     ;
 
 ElsePart
     : /* empty */
     {
-        $$ = null;
+        $$.ast = null;
     }
     | ELSE Body
     {
-        $$ = new ElsePart((List<Statement>)$2);
+        $$.ast = new ElsePart((List<Statement>)$2.ast);
     }
     ;
 
 ReturnStatement
     : RETURN ReturningExpression
     {
-        $$ = new ReturnStatement((ExpressionNode)$2);
+        $$.ast = new ReturnStatement((ExpressionNode)$2.ast);
     }
     ;
 
 ReturningExpression
     : /* empty */
     {
-        $$ = null;
+        $$.ast = null;
     }
     | Expression
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     ;
 
 Expression
     : Primary
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | ConstructorInvocation
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | FunctionalCall
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     | ExpressionDotSequence
     {
-        $$ = $1;
+        $$.ast = $1.ast;
     }
     ;
 
 ExpressionDotSequence
     : Expression
     {
-        $$ = new ExpressionDotSequence(new List<ExpressionNode>{ (ExpressionNode)$1 });
+        $$.ast = new ExpressionDotSequence(new List<ExpressionNode>{ (ExpressionNode)$1.ast });
     }
     | Expression DOT ExpressionDotSequence
     {
-        var list = (ExpressionDotSequence)$3;
-        list.Expressions.Insert(0, (ExpressionNode)$1);
-        $$ = list;
+        var list = (ExpressionDotSequence)$3.ast;
+        list.Expressions.Insert(0, (ExpressionNode)$1.ast);
+        $$.ast = list;
     }
     ;
 
 ConstructorInvocation
     : ClassName Arguments
     {
-        $$ = new ConstructorInvocation((string)$1, (List<ExpressionNode>)$2);
+        $$.ast = new ConstructorInvocation((string)$1.str, (List<ExpressionNode>)$2.ast);
     }
     ;
 
 FunctionalCall
     : Expression Arguments
     {
-        $$ = new FunctionalCall((ExpressionNode)$1, (List<ExpressionNode>)$2);
+        $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);
     }
     ;
 
 Arguments
     : LPAREN RPAREN
     {
-        $$ = new List<ExpressionNode>();
+        $$.ast = new List<ExpressionNode>();
     }
     | LPAREN ExpressionCommaSequence RPAREN
     {
-        $$ = $2;
+        $$.ast = $2.ast;
     }
     ;
 
 ExpressionCommaSequence
     : Expression
     {
-        $$ = new List<ExpressionNode>{ (ExpressionNode)$1 };
+        $$.ast = new List<ExpressionNode>{ (ExpressionNode)$1.ast };
     }
     | Expression DOT ExpressionCommaSequence
     {
-        var list = (List<ExpressionNode>)$3;
-        list.Insert(0, (ExpressionNode)$1);
-        $$ = list;
+        var list = (List<ExpressionNode>)$3.ast;
+        list.Insert(0, (ExpressionNode)$1.ast);
+        $$.ast = list;
     }
     ;
 
 Primary
     : INTEGER_LITERAL
     {
-        $$ = new IntegerLiteral((int)$1);
+        $$.ast = new IntegerLiteral((int)$1);
     }
     | REAL_LITERAL
     {
-        $$ = new RealLiteral((double)$1);
+        $$.ast = new RealLiteral((double)$1);
     }
     | BOOLEAN_LITERAL
     {
-        $$ = new BooleanLiteral((bool)$1);
+        $$.ast = new BooleanLiteral((bool)$1);
     }
     | THIS
     {
-        $$ = new ThisExpression();
+        $$.ast = new ThisExpression();
     }
     ;
 
 %%
 
-%%// Error: Unknown %keyword in this context
-// ---------------------------------------
 // ==========================================================================
 

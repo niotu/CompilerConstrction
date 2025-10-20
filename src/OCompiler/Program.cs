@@ -110,6 +110,7 @@ public class Program
             return;
         }
         var ast = (ProgramNode)parser.CurrentSemanticValue.ast;
+        // ast.Print();
 
         // TODO: Semantic Analysis
         // Console.WriteLine("** Semantic analysis (TODO)");

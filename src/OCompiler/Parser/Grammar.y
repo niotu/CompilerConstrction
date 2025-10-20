@@ -3,11 +3,11 @@
 
 
 %union {
-    string str;
-    int integer;
-    double real;
-    bool boolean;
-    object ast;
+    public string str;
+    public int integer;
+    public double real;
+    public bool boolean;
+    public object ast;
 }
 
 
@@ -216,7 +216,11 @@ Parameters
     ;
 
 ParameterDeclarations
-    : ParameterDeclaration
+    : /* empty */
+    {
+        $$.ast = new List<ParameterDeclaration>();
+    }
+    | ParameterDeclaration
     {
         $$.ast = new List<ParameterDeclaration>{ (ParameterDeclaration)$1.ast };
     }
@@ -236,13 +240,23 @@ ParameterDeclaration
     ;
 
 Body
-    : VariableDeclaration
+    : /* empty */
+    {
+        $$.ast = new List<Statement>();
+    }
+    | VariableDeclaration
     {
         $$.ast = new List<Statement>{ (Statement)$1.ast };
     }
     | Statement
     {
         $$.ast = new List<Statement>{ (Statement)$1.ast };
+    }
+    | Body Statement
+    {
+        var list = (List<Statement>)$1.ast;
+        list.Add((Statement)$2.ast);
+        $$.ast = list;
     }
     ;
 
@@ -342,15 +356,15 @@ Expression
     ;
 
 ExpressionDotSequence
-    : Expression
-    {
-        $$.ast = new ExpressionDotSequence(new List<ExpressionNode>{ (ExpressionNode)$1.ast });
-    }
-    | Expression DOT ExpressionDotSequence
+    : Expression DOT ExpressionDotSequence
     {
         var list = (ExpressionDotSequence)$3.ast;
         list.Expressions.Insert(0, (ExpressionNode)$1.ast);
         $$.ast = list;
+    }
+    | Expression
+    {
+        $$.ast = new ExpressionDotSequence(new List<ExpressionNode>{ (ExpressionNode)$1.ast });
     }
     ;
 
