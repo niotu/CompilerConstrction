@@ -92,11 +92,19 @@ public class Program
         if (Environment.GetCommandLineArgs().Contains("--tokens-only"))
         {
             PrintTokens(tokens);
-            
         }
 
-        // TODO: Syntax Analysis
+        if (Environment.GetCommandLineArgs().Contains("--tokens-to-file"))
+        {
+            PrintTokensToFile(tokens);
+        }
 
+        SyntaxAnalysis(tokens);
+        
+    }
+
+    private static void SyntaxAnalysis(List<Token> tokens)
+    {
         Console.WriteLine("**[ INFO ] Starting syntax analysis...");
         var scanner = new ManualLexerAdapter(tokens);
         // Console.WriteLine("Type of output: " ,scanner.GetType());
@@ -123,16 +131,39 @@ public class Program
     private static void PrintTokens(List<Token> tokens)
     {
         Console.WriteLine("\n**[ INFO ] Tokens detected:\n");
-        
+
         for (int i = 0; i < tokens.Count; i++)
         {
             var token = tokens[i];
             if (token.Type == TokenType.EOF) break;
-            
+
             string value = string.IsNullOrEmpty(token.Value) ? "" : $"'{token.Value}'";
-            Console.WriteLine($"  {i+1,3}: {token.Type,-18} {value,-15} @ {token.Position.Line}:{token.Position.Column}");
+            Console.WriteLine($"  {i + 1,3}: {token.Type,-18} {value,-15} @ {token.Position.Line}:{token.Position.Column}");
         }
-        
+
         Console.WriteLine($"\n**[ INFO ] Tokens calculated: {tokens.Count - 1} (except EOF)");
+    }
+    private static void PrintTokensToFile(List<Token> tokens) {
+        // Write the tokens output to a file in the current directory
+        string fileName = $"parsing_result{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+        string filePath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), fileName);
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("**[ INFO ] Tokens detected:\n");
+
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            var token = tokens[i];
+            if (token.Type == TokenType.EOF) break;
+
+            string value = string.IsNullOrEmpty(token.Value) ? "" : $"'{token.Value}'";
+            sb.AppendLine($"  {i+1,3}: {token.Type,-18} {value,-15} @ {token.Position.Line}:{token.Position.Column}");
+        }
+
+        sb.AppendLine($"\n**[ INFO ] Tokens calculated: {Math.Max(0, tokens.Count - 1)} (except EOF)");
+
+        System.IO.File.WriteAllText(filePath, sb.ToString());
+
+        Console.WriteLine($"**[ INFO ] Tokens written to: {filePath}");
     }
 }

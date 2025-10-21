@@ -12,11 +12,18 @@
 dotnet build
 ```
 
-- Run
+- Run lexer only
 
 ``` shell
-dotnet run --project src/OCompiler tests/<test_name> --tokens-only
+dotnet run --project src/OCompiler tests/<test_name> --tokens-only # add --tokens-to-file, to take tokens into file
 ```
+
+- Run parser 
+
+``` shell
+dotnet run --project src/OCompiler tests/<test_name> 
+```
+
 
 ### Correct tests
 
