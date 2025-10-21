@@ -239,31 +239,38 @@ ParameterDeclaration
     }
     ;
 
-Body
+Body 
     : /* empty */
     {
-        $$.ast = new List<Statement>();
+        $$.ast = new MethodBodyNode(new List<BodyElement>());
     }
-    | VariableDeclaration
+    | BodyElement
     {
-        $$.ast = new List<Statement>{ (Statement)$1.ast };
+        $$.ast = new MethodBodyNode(new List<BodyElement> { (BodyElement)$1.ast });
+    }
+    | Body BodyElement
+    {
+        var body = (MethodBodyNode)$1.ast;
+        body.Elements.Add((BodyElement)$2.ast);
+        $$.ast = body;
+    }
+    ;
+
+BodyElement
+    : VariableDeclaration
+    {
+        $$.ast = $1.ast;
     }
     | Statement
     {
-        $$.ast = new List<Statement>{ (Statement)$1.ast };
-    }
-    | Body Statement
-    {
-        var list = (List<Statement>)$1.ast;
-        list.Add((Statement)$2.ast);
-        $$.ast = list;
+        $$.ast = $1.ast;
     }
     ;
 
 ConstructorDeclaration
     : THIS OptionalParameters IS Body END
     {
-        $$.ast = new ConstructorDeclaration((List<ParameterDeclaration>)$2.ast, (List<Statement>)$4.ast);
+        $$.ast = new ConstructorDeclaration((List<ParameterDeclaration>)$2.ast, (MethodBodyNode)$4.ast);
     }
     ;
 
@@ -296,14 +303,14 @@ Assignment
 WhileLoop
     : WHILE Expression LOOP Body END
     {
-        $$.ast = new WhileLoop((ExpressionNode)$2.ast, (List<Statement>)$4.ast);
+        $$.ast = new WhileLoop((ExpressionNode)$2.ast, (MethodBodyNode)$4.ast);
     }
     ;
 
 IfStatement
     : IF Expression THEN Body ElsePart END
     {
-        $$.ast = new IfStatement((ExpressionNode)$2.ast, (List<Statement>)$4.ast, (ElsePart)$5.ast);
+        $$.ast = new IfStatement((ExpressionNode)$2.ast, (MethodBodyNode)$4.ast, (ElsePart)$5.ast);
     }
     ;
 
@@ -314,7 +321,7 @@ ElsePart
     }
     | ELSE Body
     {
-        $$.ast = new ElsePart((List<Statement>)$2.ast);
+        $$.ast = new ElsePart((MethodBodyNode)$2.ast);
     }
     ;
 
@@ -356,15 +363,13 @@ Expression
     ;
 
 ExpressionDotSequence
-    : Expression DOT ExpressionDotSequence
+    : Expression DOT Expression
     {
-        var list = (ExpressionDotSequence)$3.ast;
-        list.Expressions.Insert(0, (ExpressionNode)$1.ast);
-        $$.ast = list;
+        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, (ExpressionNode)$3.ast);
     }
-    | Expression
+    | ExpressionDotSequence DOT Expression
     {
-        $$.ast = new ExpressionDotSequence(new List<ExpressionNode>{ (ExpressionNode)$1.ast });
+        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, (ExpressionNode)$3.ast);
     }
     ;
 
@@ -398,7 +403,7 @@ ExpressionCommaSequence
     {
         $$.ast = new List<ExpressionNode>{ (ExpressionNode)$1.ast };
     }
-    | Expression DOT ExpressionCommaSequence
+    | Expression COMMA ExpressionCommaSequence
     {
         var list = (List<ExpressionNode>)$3.ast;
         list.Insert(0, (ExpressionNode)$1.ast);
@@ -422,6 +427,10 @@ Primary
     | THIS
     {
         $$.ast = new ThisExpression();
+    }
+    | IDENTIFIER
+    {
+        $$.ast = new IdentifierExpression((string)$1);
     }
     ;
 

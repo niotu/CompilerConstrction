@@ -8,6 +8,9 @@ namespace OCompiler.Parser
         }
     }
 
+    // Базовый класс для всех элементов внутри Body
+    public abstract class BodyElement : AstNode { }
+
     public class ProgramNode : AstNode
     {
         public List<ClassDeclaration> Classes { get; }
@@ -44,7 +47,8 @@ namespace OCompiler.Parser
 
     public abstract class MemberDeclaration : AstNode { }
 
-    public class VariableDeclaration : MemberDeclaration
+    // VariableDeclaration теперь наследуется от BodyElement
+    public class VariableDeclaration : BodyElement
     {
         public string Identifier { get; }
         public ExpressionNode Expression { get; }
@@ -80,8 +84,8 @@ namespace OCompiler.Parser
     public class ConstructorDeclaration : MemberDeclaration
     {
         public List<ParameterDeclaration> Parameters { get; }
-        public List<Statement> Body { get; }
-        public ConstructorDeclaration(List<ParameterDeclaration> parameters, List<Statement> body)
+        public MethodBodyNode Body { get; }
+        public ConstructorDeclaration(List<ParameterDeclaration> parameters, MethodBodyNode body)
         {
             Parameters = parameters;
             Body = body;
@@ -93,12 +97,12 @@ namespace OCompiler.Parser
             foreach (var param in Parameters)
                 param.Print(indent + "    ");
             Console.WriteLine(indent + "  Body:");
-            foreach (var stmt in Body)
-                stmt.Print(indent + "    ");
+            Body?.Print(indent + "    ");
         }
     }
 
-    public abstract class Statement : AstNode { }
+    // Statement теперь наследуется от BodyElement
+    public abstract class Statement : BodyElement { }
 
     public class Assignment : Statement
     {
@@ -119,8 +123,8 @@ namespace OCompiler.Parser
     public class WhileLoop : Statement
     {
         public ExpressionNode Condition { get; }
-        public List<Statement> Body { get; }
-        public WhileLoop(ExpressionNode cond, List<Statement> body)
+        public MethodBodyNode Body { get; }
+        public WhileLoop(ExpressionNode cond, MethodBodyNode body)
         {
             Condition = cond;
             Body = body;
@@ -130,17 +134,16 @@ namespace OCompiler.Parser
             Console.WriteLine(indent + "WhileLoop:");
             Condition.Print(indent + "  ");
             Console.WriteLine(indent + "  Body:");
-            foreach (var stmt in Body)
-                stmt.Print(indent + "    ");
+            Body?.Print(indent + "    ");
         }
     }
 
     public class IfStatement : Statement
     {
         public ExpressionNode Condition { get; }
-        public List<Statement> ThenBody { get; }
+        public MethodBodyNode ThenBody { get; }
         public ElsePart ElseBody { get; }
-        public IfStatement(ExpressionNode cond, List<Statement> thenBody, ElsePart elseBody)
+        public IfStatement(ExpressionNode cond, MethodBodyNode thenBody, ElsePart elseBody)
         {
             Condition = cond;
             ThenBody = thenBody;
@@ -151,8 +154,7 @@ namespace OCompiler.Parser
             Console.WriteLine(indent + "IfStatement:");
             Condition.Print(indent + "  ");
             Console.WriteLine(indent + "  ThenBody:");
-            foreach (var stmt in ThenBody)
-                stmt.Print(indent + "    ");
+            ThenBody?.Print(indent + "    ");
             if (ElseBody != null)
             {
                 Console.WriteLine(indent + "  ElseBody:");
@@ -163,14 +165,13 @@ namespace OCompiler.Parser
 
     public class ElsePart : AstNode
     {
-        public List<Statement> Statements { get; }
-        public ElsePart(List<Statement> stmts) => Statements = stmts;
+        public MethodBodyNode Body { get; }
+        public ElsePart(MethodBodyNode body) => Body = body;
 
         public override void Print(string indent = "")
         {
             Console.WriteLine(indent + "ElsePart:");
-            foreach (var stmt in Statements)
-                stmt.Print(indent + "  ");
+            Body?.Print(indent + "  ");
         }
     }
 
@@ -183,6 +184,20 @@ namespace OCompiler.Parser
         {
             Console.WriteLine(indent + "ReturnStatement:");
             Expression?.Print(indent + "  ");
+        }
+    }
+
+    // MethodBodyNode теперь содержит BodyElement вместо Statement
+    public class MethodBodyNode : AstNode
+    {
+        public List<BodyElement> Elements { get; }
+        public MethodBodyNode(List<BodyElement> elements) => Elements = elements;
+
+        public override void Print(string indent = "")
+        {
+            Console.WriteLine(indent + "MethodBody:");
+            foreach(var elem in Elements)
+                elem.Print(indent + "  ");
         }
     }
 
@@ -240,6 +255,27 @@ namespace OCompiler.Parser
         }
     }
 
+    public class MemberAccessExpression : ExpressionNode
+    {
+        public ExpressionNode Target { get; }
+        public ExpressionNode Member { get; }
+        
+        public MemberAccessExpression(ExpressionNode target, ExpressionNode member)
+        {
+            Target = target;
+            Member = member;
+        }
+
+        public override void Print(string indent = "")
+        {
+            Console.WriteLine(indent + "MemberAccessExpression:");
+            Console.WriteLine(indent + "  Target:");
+            Target.Print(indent + "    ");
+            Console.WriteLine(indent + "  Member:");
+            Member.Print(indent + "    ");
+        }
+    }
+
     public class ParameterDeclaration : AstNode
     {
         public string Identifier { get; }
@@ -273,19 +309,6 @@ namespace OCompiler.Parser
             Console.WriteLine(indent + $"Method: {Name}, Returns: {ReturnType ?? "void"}");
             foreach(var param in Parameters)
                 param.Print(indent + "  ");
-        }
-    }
-
-    public class MethodBodyNode : AstNode
-    {
-        public List<Statement> Statements { get; }
-        public MethodBodyNode(List<Statement> statements) => Statements = statements;
-
-        public override void Print(string indent = "")
-        {
-            Console.WriteLine(indent + "MethodBody:");
-            foreach(var stmt in Statements)
-                stmt.Print(indent + "  ");
         }
     }
 
