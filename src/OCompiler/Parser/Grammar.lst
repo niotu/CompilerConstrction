@@ -1,26 +1,28 @@
 
 // ==========================================================================
-//  GPPG error listing for yacc source file <Grammar.y - 20.10.2025 15:07:30>
+//  GPPG error listing for yacc source file <Grammar.y - 21.10.2025 21:10:36>
 // ==========================================================================
 //  Version:  1.5.3
-//  DateTime: 20.10.2025 15:08:05
+//  DateTime: 21.10.2025 21:17:56
 // ==========================================================================
 
 
 %using OCompiler.Lexer
 %namespace OCompiler.Parser
 
-
-%constructor public Parser(AbstractScanner<ValueType, LexLocation> scanner) : base(scanner)
-//^^^^^^^^^^^^^^^^^------^^----------------------------------------------^^
+%parser-class OCompiler.Parser.Parser
+//^^^^^^^^^^^
 // Error: Unknown %keyword in this context
-// Error: Syntax error, unexpected ident
 // Error: This character is invalid in this context
+// Error: Syntax error, unexpected ident
+// ------------------------------------------------
+%parser-constructor : base(scanner)
+//^^^^^^-----------------^^------^^
+// Error: Unknown %keyword in this context
 // Error: This character is invalid in this context
 // Error: This character is invalid in this context
 // Error: This character is invalid in this context
 // ------------------------------------------------
-
 %union {
     public string str;
     public int integer;
@@ -235,7 +237,11 @@ Parameters
     ;
 
 ParameterDeclarations
-    : ParameterDeclaration
+    : /* empty */
+    {
+        $$.ast = new List<ParameterDeclaration>();
+    }
+    | ParameterDeclaration
     {
         $$.ast = new List<ParameterDeclaration>{ (ParameterDeclaration)$1.ast };
     }
@@ -254,31 +260,38 @@ ParameterDeclaration
     }
     ;
 
-Body
+Body 
     : /* empty */
     {
-        $$.ast = new List<Statement>();
+        $$.ast = new MethodBodyNode(new List<BodyElement>());
     }
-    | VariableDeclaration
+    | BodyElement
     {
-        $$.ast = new List<Statement>{ (Statement)$1.ast };
+        $$.ast = new MethodBodyNode(new List<BodyElement> { (BodyElement)$1.ast });
+    }
+    | Body BodyElement
+    {
+        var body = (MethodBodyNode)$1.ast;
+        body.Elements.Add((BodyElement)$2.ast);
+        $$.ast = body;
+    }
+    ;
+
+BodyElement
+    : VariableDeclaration
+    {
+        $$.ast = $1.ast;
     }
     | Statement
     {
-        $$.ast = new List<Statement>{ (Statement)$1.ast };
-    }
-    | Body Statement
-    {
-        var list = (List<Statement>)$1.ast;
-        list.Add((Statement)$2.ast);
-        $$.ast = list;
+        $$.ast = $1.ast;
     }
     ;
 
 ConstructorDeclaration
     : THIS OptionalParameters IS Body END
     {
-        $$.ast = new ConstructorDeclaration((List<ParameterDeclaration>)$2.ast, (List<Statement>)$4.ast);
+        $$.ast = new ConstructorDeclaration((List<ParameterDeclaration>)$2.ast, (MethodBodyNode)$4.ast);
     }
     ;
 
@@ -311,14 +324,14 @@ Assignment
 WhileLoop
     : WHILE Expression LOOP Body END
     {
-        $$.ast = new WhileLoop((ExpressionNode)$2.ast, (List<Statement>)$4.ast);
+        $$.ast = new WhileLoop((ExpressionNode)$2.ast, (MethodBodyNode)$4.ast);
     }
     ;
 
 IfStatement
     : IF Expression THEN Body ElsePart END
     {
-        $$.ast = new IfStatement((ExpressionNode)$2.ast, (List<Statement>)$4.ast, (ElsePart)$5.ast);
+        $$.ast = new IfStatement((ExpressionNode)$2.ast, (MethodBodyNode)$4.ast, (ElsePart)$5.ast);
     }
     ;
 
@@ -329,7 +342,7 @@ ElsePart
     }
     | ELSE Body
     {
-        $$.ast = new ElsePart((List<Statement>)$2.ast);
+        $$.ast = new ElsePart((MethodBodyNode)$2.ast);
     }
     ;
 
@@ -364,22 +377,39 @@ Expression
     {
         $$.ast = $1.ast;
     }
+    | MemberAccess
+    {
+        $$.ast = $1.ast;
+    }
     | ExpressionDotSequence
     {
         $$.ast = $1.ast;
     }
     ;
 
-ExpressionDotSequence
-    : Expression
+MemberAccess
+    : Expression DOT IDENTIFIER
     {
-        $$.ast = new ExpressionDotSequence(new List<ExpressionNode>{ (ExpressionNode)$1.ast });
+        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, new IdentifierExpression((string)$3));
     }
-    | Expression DOT ExpressionDotSequence
+    | ExpressionDotSequence DOT IDENTIFIER  
     {
-        var list = (ExpressionDotSequence)$3.ast;
-        list.Expressions.Insert(0, (ExpressionNode)$1.ast);
-        $$.ast = list;
+        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, new IdentifierExpression((string)$3));
+    }
+    ;
+
+ExpressionDotSequence
+    : MemberAccess DOT ExpressionDotSequence
+    {
+        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, (ExpressionNode)$3.ast);
+    }
+    | MemberAccess
+    {
+        $$.ast = $1.ast;
+    }
+    | FunctionalCall
+    {
+        $$.ast = $1.ast;
     }
     ;
 
@@ -391,9 +421,17 @@ ConstructorInvocation
     ;
 
 FunctionalCall
-    : Expression Arguments
+    : MemberAccess Arguments
     {
         $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);
+    }
+    | ExpressionDotSequence Arguments
+    {
+        $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);
+    }
+    | IDENTIFIER Arguments
+    {
+        $$.ast = new FunctionalCall(new IdentifierExpression((string)$1), (List<ExpressionNode>)$2.ast);
     }
     ;
 
@@ -413,7 +451,7 @@ ExpressionCommaSequence
     {
         $$.ast = new List<ExpressionNode>{ (ExpressionNode)$1.ast };
     }
-    | Expression DOT ExpressionCommaSequence
+    | Expression COMMA ExpressionCommaSequence
     {
         var list = (List<ExpressionNode>)$3.ast;
         list.Insert(0, (ExpressionNode)$1.ast);
@@ -437,6 +475,10 @@ Primary
     | THIS
     {
         $$.ast = new ThisExpression();
+    }
+    | IDENTIFIER
+    {
+        $$.ast = new IdentifierExpression((string)$1);
     }
     ;
 

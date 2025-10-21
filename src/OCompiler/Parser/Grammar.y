@@ -265,6 +265,10 @@ BodyElement
     {
         $$.ast = $1.ast;
     }
+    | Expression 
+    {
+        $$.ast = new ExpressionStatement((ExpressionNode)$1.ast);
+    }
     ;
 
 ConstructorDeclaration
@@ -356,20 +360,39 @@ Expression
     {
         $$.ast = $1.ast;
     }
+    | MemberAccess
+    {
+        $$.ast = $1.ast;
+    }
     | ExpressionDotSequence
     {
         $$.ast = $1.ast;
     }
     ;
 
+MemberAccess
+    : Expression DOT IDENTIFIER
+    {
+        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, new IdentifierExpression((string)$3));
+    }
+    | ExpressionDotSequence DOT IDENTIFIER  
+    {
+        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, new IdentifierExpression((string)$3));
+    }
+    ;
+
 ExpressionDotSequence
-    : Expression DOT Expression
+    : MemberAccess DOT ExpressionDotSequence
     {
         $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, (ExpressionNode)$3.ast);
     }
-    | ExpressionDotSequence DOT Expression
+    | MemberAccess
     {
-        $$.ast = new MemberAccessExpression((ExpressionNode)$1.ast, (ExpressionNode)$3.ast);
+        $$.ast = $1.ast;
+    }
+    | FunctionalCall
+    {
+        $$.ast = $1.ast;
     }
     ;
 
@@ -381,9 +404,17 @@ ConstructorInvocation
     ;
 
 FunctionalCall
-    : Expression Arguments
+    : MemberAccess Arguments
     {
         $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);
+    }
+    | ExpressionDotSequence Arguments
+    {
+        $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);
+    }
+    | IDENTIFIER Arguments
+    {
+        $$.ast = new FunctionalCall(new IdentifierExpression((string)$1), (List<ExpressionNode>)$2.ast);
     }
     ;
 

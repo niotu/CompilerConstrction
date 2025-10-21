@@ -11,7 +11,7 @@ class Factorial is
     end
 end
 
-calc Main is
+class Main is
     this() is
         var f : Factorial
         var result : Integer

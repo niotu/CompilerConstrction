@@ -20,7 +20,7 @@ class Calc is
     end
 end
 
-calc Main is
+class Main is
     this() is
         var calc : Calc
         var result : Integer

@@ -45,10 +45,10 @@ namespace OCompiler.Parser
         }
     }
 
-    public abstract class MemberDeclaration : AstNode { }
+    public abstract class MemberDeclaration : BodyElement { }
 
     // VariableDeclaration теперь наследуется от BodyElement
-    public class VariableDeclaration : BodyElement
+    public class VariableDeclaration : MemberDeclaration
     {
         public string Identifier { get; }
         public ExpressionNode Expression { get; }
@@ -275,7 +275,17 @@ namespace OCompiler.Parser
             Member.Print(indent + "    ");
         }
     }
-
+    public class ExpressionStatement : BodyElement
+    {
+        public ExpressionNode Expression { get; }
+        public ExpressionStatement(ExpressionNode expr) => Expression = expr;
+        
+        public override void Print(string indent = "")
+        {
+            Console.WriteLine(indent + "ExpressionStatement:");
+            Expression.Print(indent + "  ");
+        }
+    }
     public class ParameterDeclaration : AstNode
     {
         public string Identifier { get; }
