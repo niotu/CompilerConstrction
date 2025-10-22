@@ -77,6 +77,7 @@ namespace OCompiler.Parser
         {
             Console.WriteLine(indent + "MethodDeclaration:");
             Header.Print(indent + "  ");
+            Console.WriteLine(indent+"  " + "MethodBody:");
             Body?.Print(indent + "  ");
         }
     }
@@ -93,15 +94,18 @@ namespace OCompiler.Parser
         public override void Print(string indent = "")
         {
             Console.WriteLine(indent + "ConstructorDeclaration:");
-            Console.WriteLine(indent + "  Parameters:");
-            foreach (var param in Parameters)
-                param.Print(indent + "    ");
-            Console.WriteLine(indent + "  Body:");
+            if (Parameters.Count == 0){
+                Console.WriteLine(indent+ "  " + "Parameters: empty");
+            } else {
+                Console.WriteLine(indent+ "  " + "Parameters:");
+                foreach(var param in Parameters)
+                    param.Print(indent + "    ");
+            }
+            Console.WriteLine(indent + "  ConstructorBody:");
             Body?.Print(indent + "    ");
         }
     }
 
-    // Statement теперь наследуется от BodyElement
     public abstract class Statement : BodyElement { }
 
     public class Assignment : Statement
@@ -133,7 +137,7 @@ namespace OCompiler.Parser
         {
             Console.WriteLine(indent + "WhileLoop:");
             Condition.Print(indent + "  ");
-            Console.WriteLine(indent + "  Body:");
+            Console.WriteLine(indent + "  WhileLoopBody:");
             Body?.Print(indent + "    ");
         }
     }
@@ -187,7 +191,6 @@ namespace OCompiler.Parser
         }
     }
 
-    // MethodBodyNode теперь содержит BodyElement вместо Statement
     public class MethodBodyNode : AstNode
     {
         public List<BodyElement> Elements { get; }
@@ -195,7 +198,6 @@ namespace OCompiler.Parser
 
         public override void Print(string indent = "")
         {
-            Console.WriteLine(indent + "MethodBody:");
             foreach(var elem in Elements)
                 elem.Print(indent + "  ");
         }
@@ -289,17 +291,20 @@ namespace OCompiler.Parser
     public class ParameterDeclaration : AstNode
     {
         public string Identifier { get; }
-        public string TypeName { get; }
-        public ParameterDeclaration(string id, string typeName)
+        public ClassNameNode Type { get; }
+        public ParameterDeclaration(string id, ClassNameNode type)
         {
             Identifier = id;
-            TypeName = typeName;
+            Type = type;
         }
 
         public override void Print(string indent = "")
-        {
-            Console.WriteLine(indent + $"Parameter: {Identifier} : {TypeName}");
-        }
+    {
+        if (Type.GenericParameter != null)
+            Console.WriteLine(indent + $"Parameter: {Identifier} : {Type.Name}[{Type.GenericParameter}]");
+        else
+            Console.WriteLine(indent + $"Parameter: {Identifier} : {Type.Name}");
+    }
     }
 
     public class MethodHeaderNode : AstNode
@@ -321,6 +326,25 @@ namespace OCompiler.Parser
                 param.Print(indent + "  ");
         }
     }
+    public class ClassNameNode : AstNode
+    {
+        public string Name { get; }
+        public string GenericParameter { get; }
+        
+        public ClassNameNode(string name, string genericParam)
+        {
+            Name = name;
+            GenericParameter = genericParam;
+        }
+
+        public override void Print(string indent = "")
+        {
+            if (GenericParameter != null)
+                Console.WriteLine(indent + $"ClassName: {Name}[{GenericParameter}]");
+            else
+                Console.WriteLine(indent + $"ClassName: {Name}");
+        }
+    }
 
     public class ExpressionDotSequence : ExpressionNode
     {
@@ -338,18 +362,30 @@ namespace OCompiler.Parser
     public class ConstructorInvocation : ExpressionNode
     {
         public string ClassName { get; }
+        public string GenericParameter { get; }
         public List<ExpressionNode> Arguments { get; }
-        public ConstructorInvocation(string className, List<ExpressionNode> args)
+        
+        public ConstructorInvocation(string className, string genericParam, List<ExpressionNode> args)
         {
             ClassName = className;
+            GenericParameter = genericParam;
             Arguments = args;
         }
 
         public override void Print(string indent = "")
         {
-            Console.WriteLine(indent + $"ConstructorInvocation: {ClassName}");
-            foreach(var arg in Arguments)
-                arg.Print(indent + "  ");
+            if (GenericParameter != null)
+                Console.WriteLine(indent + $"ConstructorInvocation: {ClassName}[{GenericParameter}]");
+            else
+                Console.WriteLine(indent + $"ConstructorInvocation: {ClassName}");
+            
+            if (Arguments.Count == 0){
+                Console.WriteLine(indent+ "  " + "Arguments: empty");
+            } else {
+                Console.WriteLine(indent+ "  " + "Arguments:");
+                foreach(var arg in Arguments)
+                    arg.Print(indent + "    ");
+            }
         }
     }
 
@@ -367,8 +403,13 @@ namespace OCompiler.Parser
         {
             Console.WriteLine(indent + "FunctionalCall:");
             Function.Print(indent + "  ");
-            foreach(var arg in Arguments)
-                arg.Print(indent + "  ");
+            if (Arguments.Count == 0){
+                Console.WriteLine(indent+ "  " + "Arguments: empty");
+            } else {
+                Console.WriteLine(indent+ "  " + "Arguments:");
+                foreach(var arg in Arguments)
+                    arg.Print(indent + "    ");
+            }
         }
     }
 }

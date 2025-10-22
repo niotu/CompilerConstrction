@@ -89,7 +89,7 @@ ClassDeclaration
 ClassName 
     : IDENTIFIER Generic
     {
-        $$.str = $1; 
+        $$.ast = new ClassNameNode((string)$1, (string)$2.str);
     }
     ;
 
@@ -235,7 +235,7 @@ ParameterDeclarations
 ParameterDeclaration
     : IDENTIFIER COLON ClassName
     {
-        $$.ast = new ParameterDeclaration((string)$1, (string)$3.str);
+        $$.ast = new ParameterDeclaration((string)$1, (ClassNameNode)$3.ast);
     }
     ;
 
@@ -399,7 +399,8 @@ ExpressionDotSequence
 ConstructorInvocation
     : ClassName Arguments
     {
-        $$.ast = new ConstructorInvocation((string)$1.str, (List<ExpressionNode>)$2.ast);
+        var classNameNode = (ClassNameNode)$1.ast;
+        $$.ast = new ConstructorInvocation(classNameNode.Name, classNameNode.GenericParameter, (List<ExpressionNode>)$2.ast);
     }
     ;
 
@@ -412,7 +413,7 @@ FunctionalCall
     {
         $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);
     }
-    | IDENTIFIER Arguments
+    | IDENTIFIER Arguments 
     {
         $$.ast = new FunctionalCall(new IdentifierExpression((string)$1), (List<ExpressionNode>)$2.ast);
     }
