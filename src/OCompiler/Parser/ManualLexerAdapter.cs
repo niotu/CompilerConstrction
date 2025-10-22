@@ -21,8 +21,20 @@ namespace OCompiler.Parser
                     Console.WriteLine("Lexer is empty (EOF reached)");
                     return (int)Tokens.EOF;
                 }
-
             var current = _tokenStream.Current;
+
+            if (current.Type == TokenType.UNKNOWN)
+            {
+                yyerror($"Unknown token: '{current.Value}'");
+                return (int)Tokens.UNKNOWN;
+            }
+            yylloc = new LexLocation(
+                current.Position.Line,
+                current.Position.Column,
+                current.Position.Line,
+                current.Position.Column + current.Value.Length
+            );
+            
 
             // По умолчанию очищаем yylval
             yylval = default(ValueType);
@@ -46,6 +58,11 @@ namespace OCompiler.Parser
 
             // Возвращаем соответствующий числовой код токена для парсера
             return (int)MapTokenTypeToEnum(current.Type);
+        }
+        public override void yyerror(string format, params object[] args)
+        {
+            var message = string.Format(format, args);
+            Console.WriteLine($"[ ERR ] Syntax error at line {yylloc.StartLine}, column {yylloc.StartColumn}: {message}");
         }
 
         // Тебе нужно определить соответствие TokenType (из Lexer) с enum Tokens (парсер)
