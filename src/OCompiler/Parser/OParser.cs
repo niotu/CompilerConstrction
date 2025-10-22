@@ -3,8 +3,8 @@
 // (see accompanying GPPGcopyright.rtf)
 
 // GPPG version 1.5.3
-// DateTime: 22.10.2025 13:32:35
-// Input file <Grammar.y - 22.10.2025 13:32:23>
+// DateTime: 22.10.2025 14:05:58
+// Input file <Grammar.y - 22.10.2025 14:05:32>
 
 // options: lines
 
@@ -289,54 +289,55 @@ public class Parser: ShiftReduceParser<ValueType, LexLocation>
       case 5: // ClassDeclaration -> CLASS, ClassName, Extension, IS, ClassBody, END
 #line 84 "Grammar.y"
     { 
-        CurrentSemanticValue.ast = new ClassDeclaration((string)ValueStack[ValueStack.Depth-5].str, (string)ValueStack[ValueStack.Depth-4].str, (List<MemberDeclaration>)ValueStack[ValueStack.Depth-2].ast);
+        var classNameNode = (ClassNameNode)ValueStack[ValueStack.Depth-5].ast;
+        CurrentSemanticValue.ast = new ClassDeclaration(classNameNode.Name, classNameNode.GenericParameter, (string)ValueStack[ValueStack.Depth-4].str, (List<MemberDeclaration>)ValueStack[ValueStack.Depth-2].ast);
     }
 #line default
         break;
       case 6: // ClassName -> IDENTIFIER, Generic
-#line 91 "Grammar.y"
+#line 92 "Grammar.y"
     {
         CurrentSemanticValue.ast = new ClassNameNode((string)ValueStack[ValueStack.Depth-2].str, (string)ValueStack[ValueStack.Depth-1].str);
     }
 #line default
         break;
       case 7: // Generic -> /* empty */
-#line 98 "Grammar.y"
+#line 99 "Grammar.y"
     {
         CurrentSemanticValue.str = null;
     }
 #line default
         break;
       case 8: // Generic -> LBRACKET, ClassName, RBRACKET
-#line 102 "Grammar.y"
+#line 103 "Grammar.y"
     {
         CurrentSemanticValue.str = ValueStack[ValueStack.Depth-2].str;
     }
 #line default
         break;
       case 9: // Extension -> /* empty */
-#line 109 "Grammar.y"
+#line 110 "Grammar.y"
     {
         CurrentSemanticValue.str = null;
     }
 #line default
         break;
       case 10: // Extension -> EXTENDS, IDENTIFIER
-#line 113 "Grammar.y"
+#line 114 "Grammar.y"
     {
         CurrentSemanticValue.str = ValueStack[ValueStack.Depth-1].str;
     }
 #line default
         break;
       case 11: // ClassBody -> MemberDeclaration
-#line 120 "Grammar.y"
+#line 121 "Grammar.y"
     {
         CurrentSemanticValue.ast = new List<MemberDeclaration> { (MemberDeclaration)ValueStack[ValueStack.Depth-1].ast };
     }
 #line default
         break;
       case 12: // ClassBody -> MemberDeclaration, ClassBody
-#line 124 "Grammar.y"
+#line 125 "Grammar.y"
     {
         var list = (List<MemberDeclaration>)ValueStack[ValueStack.Depth-1].ast;
         list.Insert(0, (MemberDeclaration)ValueStack[ValueStack.Depth-2].ast);
@@ -345,126 +346,126 @@ public class Parser: ShiftReduceParser<ValueType, LexLocation>
 #line default
         break;
       case 13: // MemberDeclaration -> VariableDeclaration
-#line 133 "Grammar.y"
+#line 134 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 14: // MemberDeclaration -> MethodDeclaration
-#line 137 "Grammar.y"
+#line 138 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 15: // MemberDeclaration -> ConstructorDeclaration
-#line 141 "Grammar.y"
+#line 142 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 16: // VariableDeclaration -> VAR, IDENTIFIER, COLON, Expression
-#line 148 "Grammar.y"
+#line 149 "Grammar.y"
     {
         CurrentSemanticValue.ast = new VariableDeclaration((string)ValueStack[ValueStack.Depth-3].str, (ExpressionNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 17: // MethodDeclaration -> MethodHeader, OptionalMethodBody
-#line 155 "Grammar.y"
+#line 156 "Grammar.y"
     {
         CurrentSemanticValue.ast = new MethodDeclaration((MethodHeaderNode)ValueStack[ValueStack.Depth-2].ast, (MethodBodyNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 18: // OptionalMethodBody -> /* empty */
-#line 162 "Grammar.y"
+#line 163 "Grammar.y"
     {
         CurrentSemanticValue.ast = null;
     }
 #line default
         break;
       case 19: // OptionalMethodBody -> MethodBody
-#line 166 "Grammar.y"
+#line 167 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 20: // MethodHeader -> METHOD, IDENTIFIER, OptionalParameters, ReturnType
-#line 173 "Grammar.y"
+#line 174 "Grammar.y"
     {
         CurrentSemanticValue.ast = new MethodHeaderNode((string)ValueStack[ValueStack.Depth-3].str, (List<ParameterDeclaration>)ValueStack[ValueStack.Depth-2].ast, (string)ValueStack[ValueStack.Depth-1].str);
     }
 #line default
         break;
       case 21: // OptionalParameters -> /* empty */
-#line 180 "Grammar.y"
+#line 181 "Grammar.y"
     {
         CurrentSemanticValue.ast = new List<ParameterDeclaration>();
     }
 #line default
         break;
       case 22: // OptionalParameters -> Parameters
-#line 184 "Grammar.y"
+#line 185 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 23: // ReturnType -> /* empty */
-#line 191 "Grammar.y"
+#line 192 "Grammar.y"
     {
         CurrentSemanticValue.str = null;
     }
 #line default
         break;
       case 24: // ReturnType -> COLON, IDENTIFIER
-#line 195 "Grammar.y"
+#line 196 "Grammar.y"
     {
         CurrentSemanticValue.str = ValueStack[ValueStack.Depth-1].str;
     }
 #line default
         break;
       case 25: // MethodBody -> IS, Body, END
-#line 202 "Grammar.y"
+#line 203 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-2].ast;
     }
 #line default
         break;
       case 26: // MethodBody -> ARROW, Expression
-#line 206 "Grammar.y"
+#line 207 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 27: // Parameters -> LPAREN, ParameterDeclarations, RPAREN
-#line 213 "Grammar.y"
+#line 214 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-2].ast;
     }
 #line default
         break;
       case 28: // ParameterDeclarations -> /* empty */
-#line 220 "Grammar.y"
+#line 221 "Grammar.y"
     {
         CurrentSemanticValue.ast = new List<ParameterDeclaration>();
     }
 #line default
         break;
       case 29: // ParameterDeclarations -> ParameterDeclaration
-#line 224 "Grammar.y"
+#line 225 "Grammar.y"
     {
         CurrentSemanticValue.ast = new List<ParameterDeclaration>{ (ParameterDeclaration)ValueStack[ValueStack.Depth-1].ast };
     }
 #line default
         break;
       case 30: // ParameterDeclarations -> ParameterDeclaration, COMMA, ParameterDeclarations
-#line 228 "Grammar.y"
+#line 229 "Grammar.y"
     {
         var list = (List<ParameterDeclaration>)ValueStack[ValueStack.Depth-1].ast;
         list.Insert(0, (ParameterDeclaration)ValueStack[ValueStack.Depth-3].ast);
@@ -473,28 +474,28 @@ public class Parser: ShiftReduceParser<ValueType, LexLocation>
 #line default
         break;
       case 31: // ParameterDeclaration -> IDENTIFIER, COLON, ClassName
-#line 237 "Grammar.y"
+#line 238 "Grammar.y"
     {
         CurrentSemanticValue.ast = new ParameterDeclaration((string)ValueStack[ValueStack.Depth-3].str, (ClassNameNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 32: // Body -> /* empty */
-#line 244 "Grammar.y"
+#line 245 "Grammar.y"
     {
         CurrentSemanticValue.ast = new MethodBodyNode(new List<BodyElement>());
     }
 #line default
         break;
       case 33: // Body -> BodyElement
-#line 248 "Grammar.y"
+#line 249 "Grammar.y"
     {
         CurrentSemanticValue.ast = new MethodBodyNode(new List<BodyElement> { (BodyElement)ValueStack[ValueStack.Depth-1].ast });
     }
 #line default
         break;
       case 34: // Body -> Body, BodyElement
-#line 252 "Grammar.y"
+#line 253 "Grammar.y"
     {
         var body = (MethodBodyNode)ValueStack[ValueStack.Depth-2].ast;
         body.Elements.Add((BodyElement)ValueStack[ValueStack.Depth-1].ast);
@@ -503,189 +504,189 @@ public class Parser: ShiftReduceParser<ValueType, LexLocation>
 #line default
         break;
       case 35: // BodyElement -> VariableDeclaration
-#line 261 "Grammar.y"
+#line 262 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 36: // BodyElement -> Statement
-#line 265 "Grammar.y"
+#line 266 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 37: // BodyElement -> Expression
-#line 269 "Grammar.y"
+#line 270 "Grammar.y"
     {
         CurrentSemanticValue.ast = new ExpressionStatement((ExpressionNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 38: // ConstructorDeclaration -> THIS, OptionalParameters, IS, Body, END
-#line 276 "Grammar.y"
+#line 277 "Grammar.y"
     {
         CurrentSemanticValue.ast = new ConstructorDeclaration((List<ParameterDeclaration>)ValueStack[ValueStack.Depth-4].ast, (MethodBodyNode)ValueStack[ValueStack.Depth-2].ast);
     }
 #line default
         break;
       case 39: // Statement -> Assignment
-#line 283 "Grammar.y"
+#line 284 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 40: // Statement -> WhileLoop
-#line 287 "Grammar.y"
+#line 288 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 41: // Statement -> IfStatement
-#line 291 "Grammar.y"
+#line 292 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 42: // Statement -> ReturnStatement
-#line 295 "Grammar.y"
+#line 296 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 43: // Assignment -> IDENTIFIER, ASSIGN, Expression
-#line 302 "Grammar.y"
+#line 303 "Grammar.y"
     {
         CurrentSemanticValue.ast = new Assignment((string)ValueStack[ValueStack.Depth-3].str, (ExpressionNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 44: // WhileLoop -> WHILE, Expression, LOOP, Body, END
-#line 309 "Grammar.y"
+#line 310 "Grammar.y"
     {
         CurrentSemanticValue.ast = new WhileLoop((ExpressionNode)ValueStack[ValueStack.Depth-4].ast, (MethodBodyNode)ValueStack[ValueStack.Depth-2].ast);
     }
 #line default
         break;
       case 45: // IfStatement -> IF, Expression, THEN, Body, ElsePart, END
-#line 316 "Grammar.y"
+#line 317 "Grammar.y"
     {
         CurrentSemanticValue.ast = new IfStatement((ExpressionNode)ValueStack[ValueStack.Depth-5].ast, (MethodBodyNode)ValueStack[ValueStack.Depth-3].ast, (ElsePart)ValueStack[ValueStack.Depth-2].ast);
     }
 #line default
         break;
       case 46: // ElsePart -> /* empty */
-#line 323 "Grammar.y"
+#line 324 "Grammar.y"
     {
         CurrentSemanticValue.ast = null;
     }
 #line default
         break;
       case 47: // ElsePart -> ELSE, Body
-#line 327 "Grammar.y"
+#line 328 "Grammar.y"
     {
         CurrentSemanticValue.ast = new ElsePart((MethodBodyNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 48: // ReturnStatement -> RETURN, ReturningExpression
-#line 334 "Grammar.y"
+#line 335 "Grammar.y"
     {
         CurrentSemanticValue.ast = new ReturnStatement((ExpressionNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 49: // ReturningExpression -> /* empty */
-#line 341 "Grammar.y"
+#line 342 "Grammar.y"
     {
         CurrentSemanticValue.ast = null;
     }
 #line default
         break;
       case 50: // ReturningExpression -> Expression
-#line 345 "Grammar.y"
+#line 346 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 51: // Expression -> Primary
-#line 352 "Grammar.y"
+#line 353 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 52: // Expression -> ConstructorInvocation
-#line 356 "Grammar.y"
+#line 357 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 53: // Expression -> FunctionalCall
-#line 360 "Grammar.y"
+#line 361 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 54: // Expression -> MemberAccess
-#line 364 "Grammar.y"
+#line 365 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 55: // Expression -> ExpressionDotSequence
-#line 368 "Grammar.y"
+#line 369 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 56: // MemberAccess -> Expression, DOT, IDENTIFIER
-#line 375 "Grammar.y"
+#line 376 "Grammar.y"
     {
         CurrentSemanticValue.ast = new MemberAccessExpression((ExpressionNode)ValueStack[ValueStack.Depth-3].ast, new IdentifierExpression((string)ValueStack[ValueStack.Depth-1].str));
     }
 #line default
         break;
       case 57: // MemberAccess -> ExpressionDotSequence, DOT, IDENTIFIER
-#line 379 "Grammar.y"
+#line 380 "Grammar.y"
     {
         CurrentSemanticValue.ast = new MemberAccessExpression((ExpressionNode)ValueStack[ValueStack.Depth-3].ast, new IdentifierExpression((string)ValueStack[ValueStack.Depth-1].str));
     }
 #line default
         break;
       case 58: // ExpressionDotSequence -> MemberAccess, DOT, ExpressionDotSequence
-#line 386 "Grammar.y"
+#line 387 "Grammar.y"
     {
         CurrentSemanticValue.ast = new MemberAccessExpression((ExpressionNode)ValueStack[ValueStack.Depth-3].ast, (ExpressionNode)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 59: // ExpressionDotSequence -> MemberAccess
-#line 390 "Grammar.y"
+#line 391 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 60: // ExpressionDotSequence -> FunctionalCall
-#line 394 "Grammar.y"
+#line 395 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-1].ast;
     }
 #line default
         break;
       case 61: // ConstructorInvocation -> ClassName, Arguments
-#line 401 "Grammar.y"
+#line 402 "Grammar.y"
     {
         var classNameNode = (ClassNameNode)ValueStack[ValueStack.Depth-2].ast;
         CurrentSemanticValue.ast = new ConstructorInvocation(classNameNode.Name, classNameNode.GenericParameter, (List<ExpressionNode>)ValueStack[ValueStack.Depth-1].ast);
@@ -693,49 +694,49 @@ public class Parser: ShiftReduceParser<ValueType, LexLocation>
 #line default
         break;
       case 62: // FunctionalCall -> MemberAccess, Arguments
-#line 409 "Grammar.y"
+#line 410 "Grammar.y"
     {
         CurrentSemanticValue.ast = new FunctionalCall((ExpressionNode)ValueStack[ValueStack.Depth-2].ast, (List<ExpressionNode>)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 63: // FunctionalCall -> ExpressionDotSequence, Arguments
-#line 413 "Grammar.y"
+#line 414 "Grammar.y"
     {
         CurrentSemanticValue.ast = new FunctionalCall((ExpressionNode)ValueStack[ValueStack.Depth-2].ast, (List<ExpressionNode>)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 64: // FunctionalCall -> IDENTIFIER, Arguments
-#line 417 "Grammar.y"
+#line 418 "Grammar.y"
     {
         CurrentSemanticValue.ast = new FunctionalCall(new IdentifierExpression((string)ValueStack[ValueStack.Depth-2].str), (List<ExpressionNode>)ValueStack[ValueStack.Depth-1].ast);
     }
 #line default
         break;
       case 65: // Arguments -> LPAREN, RPAREN
-#line 424 "Grammar.y"
+#line 425 "Grammar.y"
     {
         CurrentSemanticValue.ast = new List<ExpressionNode>();
     }
 #line default
         break;
       case 66: // Arguments -> LPAREN, ExpressionCommaSequence, RPAREN
-#line 428 "Grammar.y"
+#line 429 "Grammar.y"
     {
         CurrentSemanticValue.ast = ValueStack[ValueStack.Depth-2].ast;
     }
 #line default
         break;
       case 67: // ExpressionCommaSequence -> Expression
-#line 435 "Grammar.y"
+#line 436 "Grammar.y"
     {
         CurrentSemanticValue.ast = new List<ExpressionNode>{ (ExpressionNode)ValueStack[ValueStack.Depth-1].ast };
     }
 #line default
         break;
       case 68: // ExpressionCommaSequence -> Expression, COMMA, ExpressionCommaSequence
-#line 439 "Grammar.y"
+#line 440 "Grammar.y"
     {
         var list = (List<ExpressionNode>)ValueStack[ValueStack.Depth-1].ast;
         list.Insert(0, (ExpressionNode)ValueStack[ValueStack.Depth-3].ast);
@@ -744,35 +745,35 @@ public class Parser: ShiftReduceParser<ValueType, LexLocation>
 #line default
         break;
       case 69: // Primary -> INTEGER_LITERAL
-#line 448 "Grammar.y"
+#line 449 "Grammar.y"
     {
         CurrentSemanticValue.ast = new IntegerLiteral((int)ValueStack[ValueStack.Depth-1].integer);
     }
 #line default
         break;
       case 70: // Primary -> REAL_LITERAL
-#line 452 "Grammar.y"
+#line 453 "Grammar.y"
     {
         CurrentSemanticValue.ast = new RealLiteral((double)ValueStack[ValueStack.Depth-1].real);
     }
 #line default
         break;
       case 71: // Primary -> BOOLEAN_LITERAL
-#line 456 "Grammar.y"
+#line 457 "Grammar.y"
     {
         CurrentSemanticValue.ast = new BooleanLiteral((bool)ValueStack[ValueStack.Depth-1].boolean);
     }
 #line default
         break;
       case 72: // Primary -> THIS
-#line 460 "Grammar.y"
+#line 461 "Grammar.y"
     {
         CurrentSemanticValue.ast = new ThisExpression();
     }
 #line default
         break;
       case 73: // Primary -> IDENTIFIER
-#line 464 "Grammar.y"
+#line 465 "Grammar.y"
     {
         CurrentSemanticValue.ast = new IdentifierExpression((string)ValueStack[ValueStack.Depth-1].str);
     }
@@ -792,7 +793,7 @@ public class Parser: ShiftReduceParser<ValueType, LexLocation>
         return CharToString((char)terminal);
   }
 
-#line 471 "Grammar.y"
+#line 472 "Grammar.y"
 #line default
 }
 }

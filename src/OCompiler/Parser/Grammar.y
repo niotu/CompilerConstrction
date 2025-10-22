@@ -82,7 +82,8 @@ ClassDeclarations
 ClassDeclaration
     : CLASS ClassName Extension IS ClassBody END
     { 
-        $$.ast = new ClassDeclaration((string)$2.str, (string)$3.str, (List<MemberDeclaration>)$5.ast);
+        var classNameNode = (ClassNameNode)$2.ast;
+        $$.ast = new ClassDeclaration(classNameNode.Name, classNameNode.GenericParameter, (string)$3.str, (List<MemberDeclaration>)$5.ast);
     }
     ;
 

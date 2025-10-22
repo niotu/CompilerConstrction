@@ -27,19 +27,25 @@ namespace OCompiler.Parser
     public class ClassDeclaration : AstNode
     {
         public string Name { get; }
+        public string GenericParameter { get; }
         public string Extension { get; }
         public List<MemberDeclaration> Members { get; }
 
-        public ClassDeclaration(string name, string extension, List<MemberDeclaration> members)
+        public ClassDeclaration(string name, string genericParam, string extension, List<MemberDeclaration> members)
         {
             Name = name;
+            GenericParameter = genericParam;
             Extension = extension;
             Members = members;
         }
 
         public override void Print(string indent = "")
         {
-            Console.WriteLine($"{indent}Class: {Name}, Extends: {Extension ?? "null"}");
+            if (GenericParameter != null)
+                Console.WriteLine($"{indent}Class: {Name}[{GenericParameter}], Extends: {Extension ?? "null"}");
+            else
+                Console.WriteLine($"{indent}Class: {Name}, Extends: {Extension ?? "null"}");
+                
             foreach (var member in Members)
                 member.Print(indent + "  ");
         }
@@ -47,7 +53,6 @@ namespace OCompiler.Parser
 
     public abstract class MemberDeclaration : BodyElement { }
 
-    // VariableDeclaration теперь наследуется от BodyElement
     public class VariableDeclaration : MemberDeclaration
     {
         public string Identifier { get; }
