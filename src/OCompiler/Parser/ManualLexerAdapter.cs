@@ -8,7 +8,8 @@ namespace OCompiler.Parser
     public class ManualLexerAdapter : AbstractScanner<ValueType, LexLocation>
     {
         private readonly IEnumerator<Token> _tokenStream;
-
+        private int _lastLine = 1;
+        private int _lastColumn = 1;
         public ManualLexerAdapter(IEnumerable<Token> tokenStream)
         {
             _tokenStream = tokenStream.GetEnumerator();
@@ -34,7 +35,8 @@ namespace OCompiler.Parser
                 current.Position.Line,
                 current.Position.Column + current.Value.Length
             );
-            
+            _lastLine = current.Position.Line;
+            _lastColumn = current.Position.Column;
 
             // По умолчанию очищаем yylval
             yylval = default(ValueType);
@@ -61,9 +63,27 @@ namespace OCompiler.Parser
         }
         public override void yyerror(string format, params object[] args)
         {
-            var message = string.Format(format, args);
-            Console.WriteLine($"[ ERR ] Syntax error at line {yylloc.StartLine}, column {yylloc.StartColumn}: {message}");
+            string message;
+
+            if (string.IsNullOrEmpty(format))
+                message = "Unexpected syntax error.";
+            else if (args == null || args.Length == 0)
+                message = format;
+            else
+            {
+                try { message = string.Format(format, args); }
+                catch (FormatException) { message = format; }
+            }
+
+            if (message.Contains("unexpected EOF"))
+                message = "Unexpected end of file — possibly missing 'end' keyword.";
+
+            int line = yylloc?.StartLine ?? _lastLine;
+            int column = yylloc?.StartColumn ?? _lastColumn;
+
+            Console.WriteLine($"[ ERR ] Syntax error at line {line}, column {column}: {message}");
         }
+
 
         // Тебе нужно определить соответствие TokenType (из Lexer) с enum Tokens (парсер)
         private Tokens MapTokenTypeToEnum(TokenType type)
