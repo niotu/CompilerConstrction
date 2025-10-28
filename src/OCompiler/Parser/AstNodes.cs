@@ -8,7 +8,7 @@ namespace OCompiler.Parser
         }
     }
 
-    // Базовый класс для всех элементов внутри Body
+
     public abstract class BodyElement : AstNode { }
 
     public class ProgramNode : AstNode

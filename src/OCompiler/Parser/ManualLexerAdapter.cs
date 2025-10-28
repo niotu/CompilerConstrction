@@ -38,7 +38,6 @@ namespace OCompiler.Parser
             _lastLine = current.Position.Line;
             _lastColumn = current.Position.Column;
 
-            // По умолчанию очищаем yylval
             yylval = default(ValueType);
 
             switch (current.Type)
@@ -55,10 +54,10 @@ namespace OCompiler.Parser
                 case TokenType.BOOLEAN_LITERAL:
                     yylval.boolean = bool.Parse(current.Value);
                     break;
-                // Для ключевых слов и других токенов yylval не заполняем
+     
             }
 
-            // Возвращаем соответствующий числовой код токена для парсера
+  
             return (int)MapTokenTypeToEnum(current.Type);
         }
         public override void yyerror(string format, params object[] args)
@@ -81,11 +80,11 @@ namespace OCompiler.Parser
             int line = yylloc?.StartLine ?? _lastLine;
             int column = yylloc?.StartColumn ?? _lastColumn;
 
-            Console.WriteLine($"[ ERR ] Syntax error at line {line}, column {column}: {message}");
+            Console.WriteLine($"**[ ERR ] Syntax error at line {line}, column {column}: {message}");
         }
 
 
-        // Тебе нужно определить соответствие TokenType (из Lexer) с enum Tokens (парсер)
+    
         private Tokens MapTokenTypeToEnum(TokenType type)
         {
             switch (type)
