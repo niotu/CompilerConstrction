@@ -30,35 +30,28 @@ namespace OCompiler.Semantic
                 if (currentScope.ContainsKey(name))
                 {
                     var existing = currentScope[name];
-                    Console.WriteLine($"DEBUG: ⚠️ SYMBOL OVERWRITE: '{name}' {existing.Type}[{existing.GenericParameter}] -> {symbol.Type}[{symbol.GenericParameter}]");
                     
                     // ВРЕМЕННО: НЕ позволяем перезаписывать Array на Unknown
                     if (existing.Type == "Array" && symbol.Type == "Unknown")
                     {
-                        Console.WriteLine($"DEBUG: 🚫 BLOCKED overwrite of Array with Unknown for '{name}'");
                         return; // Не перезаписываем!
                     }
                 }
                 
-                Console.WriteLine($"DEBUG: SymbolTable.AddSymbol: {name} = {symbol.Type}[{symbol.GenericParameter}]");
                 currentScope[name] = symbol;
             }
         }
         
         public Symbol? Lookup(string name)
         {
-            Console.WriteLine($"DEBUG: SymbolTable.Lookup('{name}') - scopes count: {_scopes.Count}");
-            
             foreach (var scope in _scopes)
             {
                 if (scope.TryGetValue(name, out var symbol))
                 {
-                    Console.WriteLine($"DEBUG: Found '{name}' in scope: {symbol.Type}[{symbol.GenericParameter}]");
                     return symbol;
                 }
             }
             
-            Console.WriteLine($"DEBUG: Symbol '{name}' not found in any scope");
             return null;
         }
 
@@ -74,12 +67,7 @@ namespace OCompiler.Semantic
                 var currentScope = _scopes.Peek();
                 if (currentScope.ContainsKey(name))
                 {
-                    Console.WriteLine($"DEBUG: Updating symbol '{name}': {currentScope[name].Type} -> {newSymbol.Type}");
                     currentScope[name] = newSymbol;
-                }
-                else
-                {
-                    Console.WriteLine($"DEBUG: Cannot update - symbol '{name}' not found in current scope");
                 }
             }
         }

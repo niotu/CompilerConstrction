@@ -35,7 +35,7 @@ for test_file in "$TESTS_DIR"/*.o; do
         echo "Running test: $(basename "$test_file")"
         
         # Run the test
-        if dotnet run --project "$PROJECT_PATH" "$test_file" --tokens-only; then
+        if dotnet run --project "$PROJECT_PATH" "$test_file"; then
             echo "✅ Test passed: $(basename "$test_file")"
             passed_tests=$((passed_tests + 1))
         else
