@@ -2,6 +2,9 @@ class Animal is
     method Speak() : Integer is
         return 11111
     end
+    method Walk() : Integer is
+        return 101010
+    end
 end
 
 class Dog extends Animal is
@@ -11,9 +14,16 @@ class Dog extends Animal is
 end
 
 class Test is
+    method Sum(): Integer is
+        return 0987654321
+    end
     this() is
-        var d : Animal
-        d := Dog
+        var a : Animal()
+        var d : Dog()
+        var arr : Array[Integer](10)
+        arr.get(11)
+
+        a.Speak()
         var s : Integer(d.Speak()) // 22222
     end
 end
