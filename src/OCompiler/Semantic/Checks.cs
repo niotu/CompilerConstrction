@@ -2,6 +2,7 @@ using OCompiler.Parser;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using OCompiler.Semantic.Types;
 
 namespace OCompiler.Semantic
 {
@@ -732,6 +733,23 @@ namespace OCompiler.Semantic
                         {
                             var argType = InferExpressionType(funcCall.Arguments[i]);
                             var paramType = method.Parameters[i].Type;
+                            // Специализация T для обобщённых контейнеров
+                            if (paramType == "T")
+                            {
+                                if (targetType.StartsWith("Array["))
+                                {
+                                    paramType = ExtractArrayElementType(targetType);
+                                }
+                                else if (targetType.StartsWith("List["))
+                                {
+                                    // List[Integer] -> Integer
+                                    paramType = targetType.Substring(5, targetType.Length - 6);
+                                }
+                                else
+                                {
+                                    paramType = "Unknown";
+                                }
+                            }
                             
                             if (!AreTypesCompatible(argType, paramType) && argType != "Unknown")
                             {
@@ -1161,6 +1179,19 @@ namespace OCompiler.Semantic
                         return ident.Name;
                     }
                     return "Unknown";
+                case FunctionalCall funcCall when funcCall.Function is IdentifierExpression ctorIdent:
+                    // Вызов конструктора по имени класса: Integer(...), Real(...), Boolean(...), Array(...), List(...)
+                    if (_hierarchy.IsBuiltInClass(ctorIdent.Name) || _hierarchy.ClassExists(ctorIdent.Name))
+                    {
+                        // Примитивы и пользовательские классы возвращают сам тип
+                        if (ctorIdent.Name == "Integer" || ctorIdent.Name == "Real" || ctorIdent.Name == "Boolean")
+                        {
+                            return ctorIdent.Name;
+                        }
+                        // Для Array/List без указания generic-а через ConstructorInvocation
+                        return ctorIdent.Name;
+                    }
+                    return "Unknown";
                 case ConstructorInvocation constr:
                     var fullName = BuildFullTypeName(constr.ClassName, constr.GenericParameter);
                     Console.WriteLine($"DEBUG: Constructor '{constr.ClassName}[{constr.GenericParameter}]' -> '{fullName}'");
@@ -1252,8 +1283,26 @@ namespace OCompiler.Semantic
                 var methods = _hierarchy.GetBuiltInMethods(targetType, methodName);
                 if (methods.Any())
                 {
-                    // Берем возвращаемый тип первой подходящей перегрузки
-                    return methods[0].ReturnType;
+                    // Возвращаемый тип первой подходящей перегрузки с подстановкой T для контейнеров
+                    var ret = methods[0].ReturnType;
+                    if (ret == "T")
+                    {
+                        if (targetType.StartsWith("Array["))
+                        {
+                            return ExtractArrayElementType(targetType);
+                        }
+                        if (targetType.StartsWith("List["))
+                        {
+                            return targetType.Substring(5, targetType.Length - 6);
+                        }
+                    }
+                    if (ret == "List" && targetType.StartsWith("Array["))
+                    {
+                        // Array[T].toList(): List[T]
+                        var inner = ExtractArrayElementType(targetType);
+                        return $"List[{inner}]";
+                    }
+                    return ret;
                 }
             }
             
@@ -1263,13 +1312,11 @@ namespace OCompiler.Semantic
         private bool AreTypesCompatible(string sourceType, string targetType)
         {
             if (sourceType == targetType) return true;
-            if (sourceType == "Unknown" || targetType == "Unknown") return true; // На время компиляции
-            
-            // Базовые правила совместимости
-            if (targetType == "Real" && sourceType == "Integer") return true;
-            if (_hierarchy.IsAssignable(sourceType, targetType)) return true;
-            
-            return false;
+            if (sourceType == "Unknown" || targetType == "Unknown") return true;
+
+            var source = ParseTypeName(sourceType);
+            var target = ParseTypeName(targetType);
+            return TypeFactory.IsAssignable(source, target);
         }
 
         private string ExtractMethodName(ExpressionNode function)
@@ -1308,6 +1355,48 @@ namespace OCompiler.Semantic
         private string GetVariableType(string variableName)
         {
             return _symbolTable.Lookup(variableName)?.Type ?? "Unknown";
+        }
+
+        // ===== Symbol-based typing helpers (non-breaking integration) =====
+        private ITypeSymbol ParseTypeName(string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName)) return PrimitiveTypeSymbol.AnyValue;
+            switch (typeName)
+            {
+                case "Integer": return PrimitiveTypeSymbol.Integer;
+                case "Real": return PrimitiveTypeSymbol.Real;
+                case "Boolean": return PrimitiveTypeSymbol.Boolean;
+                case "AnyValue": return PrimitiveTypeSymbol.AnyValue;
+                case "AnyRef": return ReferenceTypeSymbol.AnyRef;
+            }
+
+            if (typeName.StartsWith("Array[") && typeName.EndsWith("]"))
+            {
+                var inner = typeName.Substring(6, typeName.Length - 7);
+                return TypeFactory.ArrayOf(ParseTypeName(inner));
+            }
+            if (typeName.StartsWith("List[") && typeName.EndsWith("]"))
+            {
+                var inner = typeName.Substring(5, typeName.Length - 6);
+                return TypeFactory.ListOf(ParseTypeName(inner));
+            }
+
+            return GetReferenceTypeSymbol(typeName);
+        }
+
+        private ReferenceTypeSymbol GetReferenceTypeSymbol(string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName)) return ReferenceTypeSymbol.AnyRef;
+            if (typeName == "AnyRef") return ReferenceTypeSymbol.AnyRef;
+
+            // Try resolve base type using hierarchy
+            var cls = _hierarchy.GetClass(typeName);
+            ReferenceTypeSymbol? baseType = null;
+            if (cls != null && !string.IsNullOrEmpty(cls.Extension))
+            {
+                baseType = ReferenceTypeSymbol.Create(cls.Extension, null);
+            }
+            return ReferenceTypeSymbol.Create(typeName, baseType);
         }
 
         private void CheckConstructorDeclarations(ConstructorDeclaration constructor)

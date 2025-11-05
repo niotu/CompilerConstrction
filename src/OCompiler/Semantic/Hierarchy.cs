@@ -71,28 +71,57 @@ public class ClassHierarchy
 
     // НОВЫЕ МЕТОДЫ для работы с встроенными классами:
     
-    public bool IsBuiltInClass(string? className) => 
-        !string.IsNullOrEmpty(className) && _builtInClasses.ContainsKey(className);
+    public bool IsBuiltInClass(string? className)
+    {
+        if (string.IsNullOrEmpty(className)) return false;
+        var key = NormalizeClassName(className);
+        return _builtInClasses.ContainsKey(key);
+    }
     
-    public BuiltInClassInfo? GetBuiltInClass(string className) => 
-        _builtInClasses.GetValueOrDefault(className);
+    public BuiltInClassInfo? GetBuiltInClass(string className)
+    {
+        var key = NormalizeClassName(className);
+        return _builtInClasses.GetValueOrDefault(key);
+    }
     
     public List<BuiltInMethodInfo> GetBuiltInMethods(string className, string methodName)
     {
-        if (_builtInClasses.TryGetValue(className, out var classInfo))
+        var key = NormalizeClassName(className);
+        if (_builtInClasses.TryGetValue(key, out var classInfo))
         {
-            return classInfo.Methods
-                .Where(kv => kv.Key.StartsWith($"{methodName}(")) // Ищем все перегрузки
-                .Select(kv => kv.Value)
-                .ToList();
+            var list = new List<BuiltInMethodInfo>();
+
+            // Точное совпадение имени (для методов без параметров)
+            if (classInfo.Methods.TryGetValue(methodName, out var exact))
+            {
+                list.Add(exact);
+            }
+
+            // Совпадение по префиксу для перегрузок (формат Name(Type))
+            list.AddRange(classInfo.Methods
+                .Where(kv => kv.Key.StartsWith($"{methodName}("))
+                .Select(kv => kv.Value));
+
+            return list;
         }
         return new List<BuiltInMethodInfo>();
     }
 
     public bool HasBuiltInMethod(string className, string methodName)
     {
-        return _builtInClasses.TryGetValue(className, out var classInfo) && 
-            classInfo.Methods.Any(kv => kv.Key.StartsWith($"{methodName}("));
+        var key = NormalizeClassName(className);
+        if (!_builtInClasses.TryGetValue(key, out var classInfo)) return false;
+        if (classInfo.Methods.ContainsKey(methodName)) return true; // без параметров
+        return classInfo.Methods.Any(kv => kv.Key.StartsWith($"{methodName}("));
+    }
+
+    private static string NormalizeClassName(string className)
+    {
+        if (string.IsNullOrEmpty(className)) return className;
+        // Strip generic instantiation: Array[T] -> Array, List[T] -> List
+        if (className.StartsWith("Array[")) return "Array";
+        if (className.StartsWith("List[")) return "List";
+        return className;
     }
     
     public bool IsValidBuiltInConstructor(string className, int argumentCount)
