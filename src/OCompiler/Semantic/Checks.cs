@@ -219,7 +219,6 @@ namespace OCompiler.Semantic
                 
                 foreach (var varDecl in classVariables)
                 {
-<<<<<<< HEAD
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
                         var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
@@ -230,9 +229,6 @@ namespace OCompiler.Semantic
                         }
                         _symbolTable.AddSymbol(varDecl.Identifier, sym);
                     }
-=======
-                    AddClassVariable(varDecl, classDecl);
->>>>>>> 025b1a33d886159225594357f88c3809498b5d67
                 }
 
                 // Обрабатываем конструкторы (где объявлены локальные переменные)
@@ -251,7 +247,6 @@ namespace OCompiler.Semantic
                 }
                 
                 _symbolTable.ExitScope();
-<<<<<<< HEAD
                 Console.WriteLine($"DEBUG: ===== Finished class: {_currentClass} =====");
             }
         }
@@ -285,8 +280,6 @@ namespace OCompiler.Semantic
             {
                 var exprType = InferExpressionType(varDecl.Expression);
                 _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
-=======
->>>>>>> 025b1a33d886159225594357f88c3809498b5d67
             }
         }
         private void CheckMethodDeclarations(MethodDeclaration method)
@@ -1832,16 +1825,6 @@ namespace OCompiler.Semantic
                 {
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
-<<<<<<< HEAD
-                        var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
-                        if (constr.ClassName == "Array" && constr.Arguments.Count == 1)
-                        {
-                            var constSize = TryEvalConstInt(constr.Arguments[0]);
-                            if (constSize.HasValue) sym.ArraySize = constSize.Value;
-                        }
-                        _symbolTable.AddSymbol(varDecl.Identifier, sym);
-                        Console.WriteLine($"DEBUG: Added constructor variable '{varDecl.Identifier}' as {constr.ClassName}[{constr.GenericParameter}]");
-=======
                         _symbolTable.AddSymbol(varDecl.Identifier, 
                             new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
                     }
@@ -1859,7 +1842,6 @@ namespace OCompiler.Semantic
                             var exprType = InferExpressionType(varDecl.Expression);
                             _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
                         }
->>>>>>> 025b1a33d886159225594357f88c3809498b5d67
                     }
                     else
                     {
