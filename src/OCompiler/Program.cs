@@ -118,10 +118,13 @@ public class Program
             return;
         }
         var ast = (ProgramNode)parser.CurrentSemanticValue.ast;
-        ast.Print();
 
+        if (Environment.GetCommandLineArgs().Contains("--ast"))
+        {
+            Console.WriteLine("**[ DEBUG ] Abstract Syntax Tree:");
+            ast.Print();
+        }
        
-
         // TODO: Semantic Analysis
         Console.WriteLine("** Semantic analysis (TODO)");
         // var analyzer = new SemanticAnalyzer();
@@ -176,7 +179,7 @@ public class Program
             var optimizer = new Optimizer(classHierarchy);
             var optimizedAst = optimizer.Optimize(ast);
             
-            if (Environment.GetCommandLineArgs().Contains("--debug"))
+            if (Environment.GetCommandLineArgs().Contains("--ast"))
             {
                 Console.WriteLine("**[ DEBUG ] Optimized Abstract Syntax Tree:");
                 optimizedAst.Print();

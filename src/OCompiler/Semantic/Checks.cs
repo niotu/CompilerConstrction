@@ -500,6 +500,11 @@ namespace OCompiler.Semantic
                     {
                         CheckBuiltInConstructorCall(new ConstructorInvocation(methodName, null, funcCall.Arguments));
                     }
+                    // Вызов специальных проверок для встроенных методов (например, деление на ноль)
+                    if (isBuiltInMethodCall && funcCall.Function is MemberAccessExpression builtInMember)
+                    {
+                        CheckBuiltInMethodCall(funcCall, builtInMember.Target, methodName);
+                    }
                 }
             }
             else if (expr is MemberAccessExpression memberAccess)
@@ -930,6 +935,36 @@ namespace OCompiler.Semantic
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // Дополнительная проверка: деление/остаток на ноль для встроенных числовых методов
+                if ((methodName == "Div" || methodName == "Rem") && funcCall.Arguments.Count > 0)
+                {
+                    var denomExpr = funcCall.Arguments[0];
+                    // Попытка получить целочисленный литерал (Integer / IntegerLiteral)
+                    var constInt = TryEvalConstInt(denomExpr);
+                    if (constInt.HasValue && constInt.Value == 0)
+                    {
+                        _errors.Add($"Division by zero detected in '{targetType}.{methodName}'");
+                    }
+                    else
+                    {
+                        // Проверяем для вещественных литералов Real(0.0) или прямого RealLiteral
+                        if (denomExpr is RealLiteral rl)
+                        {
+                            if (Math.Abs(rl.Value) < double.Epsilon)
+                            {
+                                _errors.Add($"Division by zero detected in '{targetType}.{methodName}'");
+                            }
+                        }
+                        else if (denomExpr is FunctionalCall fc && fc.Function is IdentifierExpression id && id.Name == "Real" && fc.Arguments.Count == 1 && fc.Arguments[0] is RealLiteral innerRl)
+                        {
+                            if (Math.Abs(innerRl.Value) < double.Epsilon)
+                            {
+                                _errors.Add($"Division by zero detected in '{targetType}.{methodName}'");
                             }
                         }
                     }
