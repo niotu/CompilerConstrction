@@ -247,7 +247,6 @@ namespace OCompiler.Semantic
                 }
                 
                 _symbolTable.ExitScope();
-                Console.WriteLine($"DEBUG: ===== Finished class: {_currentClass} =====");
             }
         }
         private void PrintCurrentSymbols()
