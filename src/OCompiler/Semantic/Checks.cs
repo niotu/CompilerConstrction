@@ -22,7 +22,6 @@ namespace OCompiler.Semantic
         public SemanticChecker(ClassHierarchy hierarchy)
         {
             _hierarchy = hierarchy;
-            Console.WriteLine($"DEBUG: SemanticChecker created with SymbolTable: {_symbolTable.GetHashCode()}");
         }
 
         public void Check(ProgramNode program)
@@ -77,12 +76,12 @@ namespace OCompiler.Semantic
                 
                 foreach (var member in classDecl.Members)
                 {
-                    CheckMemberKeywordUsage(member);
+                    CheckMemberKeywordUsage(member, classDecl);
                 }
             }
         }
 
-        private void CheckMemberKeywordUsage(MemberDeclaration member)
+        private void CheckMemberKeywordUsage(MemberDeclaration member, ClassDeclaration classDecl = null)
         {
             switch (member)
             {
@@ -95,7 +94,7 @@ namespace OCompiler.Semantic
                     break;
                     
                 case VariableDeclaration varDecl:
-                    CheckVariableKeywordUsage(varDecl);
+                    CheckVariableKeywordUsage(varDecl, classDecl);
                     break;
             }
         }
@@ -173,7 +172,7 @@ namespace OCompiler.Semantic
             }
         }
 
-        private void CheckVariableKeywordUsage(VariableDeclaration varDecl)
+        private void CheckVariableKeywordUsage(VariableDeclaration varDecl, ClassDeclaration classDecl = null)
         {
             // 1. Проверка что 'var' имеет инициализатор
             if (varDecl.Expression == null)
@@ -183,6 +182,17 @@ namespace OCompiler.Semantic
             }
 
             // 2. Проверка что тип инициализатора может быть выведен
+            // Исключение: если это generic-параметр класса, это нормально
+            if (varDecl.Expression is IdentifierExpression ident)
+            {
+                if (classDecl != null && !string.IsNullOrEmpty(classDecl.GenericParameter) && 
+                    ident.Name == classDecl.GenericParameter)
+                {
+                    // Это generic-параметр класса - это валидно
+                    return;
+                }
+            }
+            
             var initializerType = InferExpressionType(varDecl.Expression);
             if (initializerType == "Unknown")
             {
@@ -203,15 +213,13 @@ namespace OCompiler.Semantic
             {
                 _currentClass = classDecl.Name;
                 _symbolTable.EnterScope();
-                
-                Console.WriteLine($"DEBUG: ===== Processing class: {_currentClass} =====");
 
                 // Обрабатываем переменные уровня класса
                 var classVariables = classDecl.Members.OfType<VariableDeclaration>().ToList();
-                Console.WriteLine($"DEBUG: Found {classVariables.Count} class-level variables");
                 
                 foreach (var varDecl in classVariables)
                 {
+<<<<<<< HEAD
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
                         var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
@@ -222,11 +230,13 @@ namespace OCompiler.Semantic
                         }
                         _symbolTable.AddSymbol(varDecl.Identifier, sym);
                     }
+=======
+                    AddClassVariable(varDecl, classDecl);
+>>>>>>> 025b1a33d886159225594357f88c3809498b5d67
                 }
 
                 // Обрабатываем конструкторы (где объявлены локальные переменные)
                 var constructors = classDecl.Members.OfType<ConstructorDeclaration>().ToList();
-                Console.WriteLine($"DEBUG: Found {constructors.Count} constructors");
                 
                 foreach (var constructor in constructors)
                 {
@@ -241,6 +251,7 @@ namespace OCompiler.Semantic
                 }
                 
                 _symbolTable.ExitScope();
+<<<<<<< HEAD
                 Console.WriteLine($"DEBUG: ===== Finished class: {_currentClass} =====");
             }
         }
@@ -274,11 +285,12 @@ namespace OCompiler.Semantic
             {
                 var exprType = InferExpressionType(varDecl.Expression);
                 _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+=======
+>>>>>>> 025b1a33d886159225594357f88c3809498b5d67
             }
         }
         private void CheckMethodDeclarations(MethodDeclaration method)
         {
-            Console.WriteLine($"DEBUG: ===== CheckMethodDeclarations for method: {method.Header.Name} =====");
             
             _currentMethod = method.Header.Name;
             
@@ -295,12 +307,9 @@ namespace OCompiler.Semantic
                 
                 // Обрабатываем переменные в теле метода
                 var methodVariables = method.Body.Elements.OfType<VariableDeclaration>().ToList();
-                Console.WriteLine($"DEBUG: Found {methodVariables.Count} variable declarations in method body");
                 
                 foreach (var varDecl in methodVariables)
                 {
-                    Console.WriteLine($"DEBUG: Processing method variable: {varDecl.Identifier}");
-                    
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
                         var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
@@ -337,7 +346,12 @@ namespace OCompiler.Semantic
                 // Проверяем остальные элементы
                 foreach (var element in method.Body.Elements)
                 {
-                    if (!(element is VariableDeclaration))
+                    if (element is VariableDeclaration varDecl)
+                    {
+                        // Для переменных проверяем их инициализаторы
+                        CheckExpressionDeclarations(varDecl.Expression);
+                    }
+                    else
                     {
                         CheckElementDeclarations(element);
                     }
@@ -345,12 +359,6 @@ namespace OCompiler.Semantic
                 
                 _symbolTable.ExitScope();
             }
-            else
-            {
-                Console.WriteLine($"DEBUG: Method {method.Header.Name} has no body - skipping");
-            }
-            
-            Console.WriteLine($"DEBUG: ===== Finished method: {method.Header.Name} =====");
         }
 
         // НОВЫЙ МЕТОД: Анализирует выражение и возвращает его тип
@@ -374,7 +382,6 @@ namespace OCompiler.Semantic
 
         private void CheckElementDeclarations(BodyElement element)
         {
-            Console.WriteLine($"DEBUG: CheckElementDeclarations: {element.GetType().Name}");
             switch (element)
             {
                 case Assignment assignment:
@@ -449,7 +456,6 @@ namespace OCompiler.Semantic
             {
                 if (_hierarchy.IsBuiltInClass(ident.Name))
                 {
-                    Console.WriteLine($"DEBUG: Built-in type '{ident.Name}' - skipping declaration check");
                     return; // Пропускаем проверку для встроенных типов
                 }
                 var symbol = _symbolTable.Lookup(ident.Name);
@@ -468,7 +474,17 @@ namespace OCompiler.Semantic
             }
             else if (expr is FunctionalCall funcCall)
             {
-               var methodName = ExtractMethodName(funcCall.Function);
+                // Сначала проверяем саму функцию (может быть MemberAccessExpression)
+                CheckExpressionDeclarations(funcCall.Function);
+                
+                // Затем проверяем аргументы
+                foreach (var arg in funcCall.Arguments)
+                {
+                    CheckExpressionDeclarations(arg);
+                }
+                
+                // Затем проверяем, что вызов метода/конструктора валиден
+                var methodName = ExtractMethodName(funcCall.Function);
                 if (methodName != null)
                 {
                     bool isConstructor = _hierarchy.ClassExists(methodName);
@@ -481,8 +497,6 @@ namespace OCompiler.Semantic
                     bool isBuiltInConstructor = _hierarchy.IsBuiltInClass(methodName) && 
                                             _hierarchy.IsValidBuiltInConstructor(methodName, funcCall.Arguments.Count);
                     
-                    Console.WriteLine($"DEBUG: Method check: '{methodName}' - array={isArrayMethod}, builtin={isBuiltInMethodCall}, constructor={isConstructor}, builtin-constructor={isBuiltInConstructor}");
-                    
                     if (!isConstructor && !isMethod && !isBuiltInType && !isBuiltInMethodCall && !isArrayMethod && !isBuiltInConstructor)
                     {
                         _errors.Add($"Method or constructor '{methodName}' not found");
@@ -494,17 +508,47 @@ namespace OCompiler.Semantic
                         CheckBuiltInConstructorCall(new ConstructorInvocation(methodName, null, funcCall.Arguments));
                     }
                 }
-                
-                CheckExpressionDeclarations(funcCall.Function);
-                foreach (var arg in funcCall.Arguments)
-                {
-                    CheckExpressionDeclarations(arg);
-                }
             }
             else if (expr is MemberAccessExpression memberAccess)
             {
                 CheckExpressionDeclarations(memberAccess.Target);
-
+                
+                // Проверяем что Member тоже существует
+                if (memberAccess.Member is IdentifierExpression memberIdent)
+                {
+                    var targetType = InferExpressionType(memberAccess.Target);
+                    string actualTargetType = targetType;
+                    
+                    // Если targetType неизвестен, но target - это IdentifierExpression (переменная), 
+                    // пытаемся найти тип переменной в таблице символов
+                    if (targetType == "Unknown" && memberAccess.Target is IdentifierExpression targetIdent)
+                    {
+                        var symbol = _symbolTable.Lookup(targetIdent.Name);
+                        if (symbol != null)
+                        {
+                            actualTargetType = symbol.GetFullTypeName();
+                        }
+                    }
+                    
+                    // Если это метод встроенного типа, проверяем его существование
+                    if (_hierarchy.IsBuiltInClass(actualTargetType))
+                    {
+                        var methods = _hierarchy.GetBuiltInMethods(actualTargetType, memberIdent.Name);
+                        if (!methods.Any())
+                        {
+                            _errors.Add($"Method '{memberIdent.Name}' not found in built-in class '{actualTargetType}'");
+                        }
+                    }
+                    // Если это метод класса (например, this.fact)
+                    else if (_hierarchy.ClassExists(actualTargetType))
+                    {
+                        var method = FindMethod(memberIdent.Name, actualTargetType);
+                        if (method == null)
+                        {
+                            _errors.Add($"Method '{memberIdent.Name}' not found in class '{actualTargetType}'");
+                        }
+                    }
+                }
             }
             else if (expr is ConstructorInvocation constr)
             {
@@ -601,6 +645,13 @@ namespace OCompiler.Semantic
             foreach (var classDecl in program.Classes)
             {
                 _currentClass = classDecl.Name;
+                _symbolTable.EnterScope();
+                
+                // Добавляем переменные уровня класса
+                foreach (var varDecl in classDecl.Members.OfType<VariableDeclaration>())
+                {
+                    AddClassVariable(varDecl, classDecl);
+                }
                 
                 foreach (var member in classDecl.Members)
                 {
@@ -610,13 +661,15 @@ namespace OCompiler.Semantic
                     }
                     else if (member is VariableDeclaration varDecl)
                     {
-                        CheckVariableType(varDecl);
+                        CheckVariableType(varDecl, classDecl);
                     }
                     else if (member is ConstructorDeclaration constructor)
                     {
                         CheckConstructorTypes(constructor);
                     }
                 }
+                
+                _symbolTable.ExitScope();
             }
         }
 
@@ -626,11 +679,36 @@ namespace OCompiler.Semantic
             
             if (method.Body != null)
             {
+                _symbolTable.EnterScope();
+                
+                // Добавляем параметры метода
+                foreach (var param in method.Header.Parameters)
+                {
+                    _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
+                }
+                
+                // Добавляем переменные метода
+                foreach (var varDecl in method.Body.Elements.OfType<VariableDeclaration>())
+                {
+                    if (varDecl.Expression is ConstructorInvocation constr)
+                    {
+                        _symbolTable.AddSymbol(varDecl.Identifier, 
+                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                    }
+                    else
+                    {
+                        var exprType = InferExpressionType(varDecl.Expression);
+                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                    }
+                }
+                
                 // Проверяем типы в теле метода
                 foreach (var element in method.Body.Elements)
                 {
                     CheckElementTypes(element);
                 }
+                
+                _symbolTable.ExitScope();
             }
         }
 
@@ -638,10 +716,38 @@ namespace OCompiler.Semantic
         {
             _currentMethod = "this";
             
-            foreach (var element in constructor.Body.Elements)
+            _symbolTable.EnterScope();
+            
+            // Добавляем параметры конструктора
+            foreach (var param in constructor.Parameters)
             {
-                CheckElementTypes(element);
+                _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
             }
+            
+            // Добавляем переменные конструктора
+            if (constructor.Body != null)
+            {
+                foreach (var varDecl in constructor.Body.Elements.OfType<VariableDeclaration>())
+                {
+                    if (varDecl.Expression is ConstructorInvocation constr)
+                    {
+                        _symbolTable.AddSymbol(varDecl.Identifier, 
+                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                    }
+                    else
+                    {
+                        var exprType = InferExpressionType(varDecl.Expression);
+                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                    }
+                }
+                
+                foreach (var element in constructor.Body.Elements)
+                {
+                    CheckElementTypes(element);
+                }
+            }
+            
+            _symbolTable.ExitScope();
         }
 
         private void CheckElementTypes(BodyElement element)
@@ -882,9 +988,20 @@ namespace OCompiler.Semantic
                 }
             }
         }
-        private void CheckVariableType(VariableDeclaration varDecl)
+        private void CheckVariableType(VariableDeclaration varDecl, ClassDeclaration classDecl = null)
         {
             if (varDecl.Expression == null) return;
+
+            // Проверяем, является ли это generic-параметром класса
+            if (varDecl.Expression is IdentifierExpression ident)
+            {
+                if (classDecl != null && !string.IsNullOrEmpty(classDecl.GenericParameter) && 
+                    ident.Name == classDecl.GenericParameter)
+                {
+                    // Это generic-параметр класса - это валидно, пропускаем проверку типа
+                    return;
+                }
+            }
 
             var exprType = InferExpressionType(varDecl.Expression);
             
@@ -913,6 +1030,13 @@ namespace OCompiler.Semantic
             foreach (var classDecl in program.Classes)
             {
                 _currentClass = classDecl.Name;
+                _symbolTable.EnterScope();
+                
+                // Добавляем переменные уровня класса
+                foreach (var varDecl in classDecl.Members.OfType<VariableDeclaration>())
+                {
+                    AddClassVariable(varDecl, classDecl);
+                }
                 
                 foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
                 {
@@ -923,11 +1047,38 @@ namespace OCompiler.Semantic
                 {
                     CheckConstructorCallsInConstructor(constructor);
                 }
+                
+                _symbolTable.ExitScope();
             }
         }
 
         private void CheckConstructorCallsInMethod(MethodDeclaration method)
         {
+            if (method.Body == null) return;
+            
+            _symbolTable.EnterScope();
+            
+            // Добавляем параметры метода
+            foreach (var param in method.Header.Parameters)
+            {
+                _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
+            }
+            
+            // Добавляем переменные метода
+            foreach (var varDecl in method.Body.Elements.OfType<VariableDeclaration>())
+            {
+                if (varDecl.Expression is ConstructorInvocation constr)
+                {
+                    _symbolTable.AddSymbol(varDecl.Identifier, 
+                        new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                }
+                else
+                {
+                    var exprType = InferExpressionType(varDecl.Expression);
+                    _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                }
+            }
+            
             var constructorCalls = CollectConstructorCalls(method.Body);
         
             foreach (var constructorCall in constructorCalls)
@@ -942,6 +1093,8 @@ namespace OCompiler.Semantic
                     CheckBuiltInConstructorCall(constructorCall);
                 }
             }
+            
+            _symbolTable.ExitScope();
         }
         private void CheckBuiltInConstructorCall(ConstructorInvocation constr)
         {
@@ -994,15 +1147,43 @@ namespace OCompiler.Semantic
 
         private void CheckConstructorCallsInConstructor(ConstructorDeclaration constructor)
         {
-            var constructorCalls = CollectConstructorCalls(constructor.Body);
+            _symbolTable.EnterScope();
             
-            foreach (var constructorCall in constructorCalls)
+            // Добавляем параметры конструктора
+            foreach (var param in constructor.Parameters)
             {
-                if (!_hierarchy.ClassExists(constructorCall.ClassName))
+                _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
+            }
+            
+            // Добавляем переменные конструктора
+            if (constructor.Body != null)
+            {
+                foreach (var varDecl in constructor.Body.Elements.OfType<VariableDeclaration>())
                 {
-                    _errors.Add($"Constructor call for unknown class '{constructorCall.ClassName}'");
+                    if (varDecl.Expression is ConstructorInvocation constr)
+                    {
+                        _symbolTable.AddSymbol(varDecl.Identifier, 
+                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                    }
+                    else
+                    {
+                        var exprType = InferExpressionType(varDecl.Expression);
+                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                    }
+                }
+                
+                var constructorCalls = CollectConstructorCalls(constructor.Body);
+                
+                foreach (var constructorCall in constructorCalls)
+                {
+                    if (!_hierarchy.ClassExists(constructorCall.ClassName))
+                    {
+                        _errors.Add($"Constructor call for unknown class '{constructorCall.ClassName}'");
+                    }
                 }
             }
+            
+            _symbolTable.ExitScope();
         }
 
         private List<ConstructorInvocation> CollectConstructorCalls(MethodBodyNode? body)
@@ -1223,13 +1404,42 @@ namespace OCompiler.Semantic
             
             foreach (var element in body.Elements)
             {
-                if (element is ReturnStatement returnStmt)
-                {
-                    result.Add(returnStmt);
-                }
+                CollectReturnStatementsFromElement(element, result);
             }
             
             return result;
+        }
+
+        private void CollectReturnStatementsFromElement(BodyElement element, List<ReturnStatement> result)
+        {
+            switch (element)
+            {
+                case ReturnStatement returnStmt:
+                    result.Add(returnStmt);
+                    break;
+                    
+                case IfStatement ifStmt:
+                    // Рекурсивно собираем return statements из then и else веток
+                    CollectReturnStatementsFromBody(ifStmt.ThenBody, result);
+                    if (ifStmt.ElseBody != null)
+                    {
+                        CollectReturnStatementsFromBody(ifStmt.ElseBody.Body, result);
+                    }
+                    break;
+                    
+                case WhileLoop whileLoop:
+                    // Рекурсивно собираем return statements из тела цикла
+                    CollectReturnStatementsFromBody(whileLoop.Body, result);
+                    break;
+            }
+        }
+
+        private void CollectReturnStatementsFromBody(MethodBodyNode body, List<ReturnStatement> result)
+        {
+            foreach (var element in body.Elements)
+            {
+                CollectReturnStatementsFromElement(element, result);
+            }
         }
 
         // 10. Array Bound Checking
@@ -1250,6 +1460,7 @@ namespace OCompiler.Semantic
             foreach (var classDecl in program.Classes)
             {
                 var names = new HashSet<string>();
+                var methodSignatures = new HashSet<string>();
                 
                 foreach (var member in classDecl.Members)
                 {
@@ -1263,14 +1474,34 @@ namespace OCompiler.Semantic
                     
                     if (name != null)
                     {
-                        if (names.Contains(name))
+                        // Для методов разрешаем перегрузку - проверяем по сигнатуре
+                        if (member is MethodDeclaration method)
                         {
-                            _errors.Add($"Duplicate name '{name}' in class '{classDecl.Name}'");
+                            var signature = BuildMethodSignature(method);
+                            if (methodSignatures.Contains(signature))
+                            {
+                                _errors.Add($"Duplicate method signature '{signature}' in class '{classDecl.Name}'");
+                            }
+                            methodSignatures.Add(signature);
                         }
-                        names.Add(name);
+                        else
+                        {
+                            // Для переменных и конструкторов - проверяем уникальность имени
+                            if (names.Contains(name))
+                            {
+                                _errors.Add($"Duplicate name '{name}' in class '{classDecl.Name}'");
+                            }
+                            names.Add(name);
+                        }
                     }
                 }
             }
+        }
+
+        private string BuildMethodSignature(MethodDeclaration method)
+        {
+            var paramTypes = string.Join(",", method.Header.Parameters.Select(p => p.Type.Name));
+            return $"{method.Header.Name}({paramTypes})";
         }
 
         private void CheckConstructorReturnTypes(ProgramNode program)
@@ -1326,7 +1557,6 @@ namespace OCompiler.Semantic
                     return "Unknown";
                 case ConstructorInvocation constr:
                     var fullName = BuildFullTypeName(constr.ClassName, constr.GenericParameter);
-                    Console.WriteLine($"DEBUG: Constructor '{constr.ClassName}[{constr.GenericParameter}]' -> '{fullName}'");
                     return fullName;
                 case MemberAccessExpression memberAccess:
                     return InferMemberAccessType(memberAccess);
@@ -1344,20 +1574,7 @@ namespace OCompiler.Semantic
             {
                 // ИСПОЛЬЗУЕМ GetFullTypeName для получения полного типа
                 var fullType = symbol.GetFullTypeName();
-                
-                // ОТЛАДОЧНЫЙ ВЫВОД
-                if (ident.Name == "arr") // замените на имя вашей переменной массива
-                {
-                    Console.WriteLine($"DEBUG: Symbol for '{ident.Name}': Type={symbol.Type}, Generic={symbol.GenericParameter}, Full={fullType}");
-                }
-                
                 return fullType;
-            }
-            
-            // ОТЛАДОЧНЫЙ ВЫВОД
-            if (ident.Name == "arr")
-            {
-                Console.WriteLine($"DEBUG: No symbol found for 'arr'");
             }
             
             return "Unknown";
@@ -1381,6 +1598,22 @@ namespace OCompiler.Semantic
                 }
             }
             
+            // Если target - это класс (например, this или переменная класса), проверяем методы
+            if (memberAccess.Member is IdentifierExpression memberIdentifier)
+            {
+                var methodName = memberIdentifier.Name;
+                
+                // Проверяем, есть ли такой метод в классе targetType
+                if (_hierarchy.ClassExists(targetType))
+                {
+                    var method = FindMethod(methodName, targetType);
+                    if (method != null && !string.IsNullOrEmpty(method.Header.ReturnType))
+                    {
+                        return method.Header.ReturnType;
+                    }
+                }
+            }
+            
             return "Unknown";
         }
 
@@ -1389,11 +1622,8 @@ namespace OCompiler.Semantic
         {
             if (!string.IsNullOrEmpty(genericParam))
             {
-                var result = $"{baseName}[{genericParam}]";
-                Console.WriteLine($"DEBUG: BuildFullTypeName: {baseName} + {genericParam} = {result}");
-                return result;
+                return $"{baseName}[{genericParam}]";
             }
-            Console.WriteLine($"DEBUG: BuildFullTypeName: {baseName} (no generic)");
             return baseName;
         }
 
@@ -1531,10 +1761,59 @@ namespace OCompiler.Semantic
             return ReferenceTypeSymbol.Create(typeName, baseType);
         }
 
+        private void AddClassVariable(VariableDeclaration varDecl, ClassDeclaration classDecl = null)
+        {
+            if (varDecl.Expression is ConstructorInvocation constr)
+            {
+                _symbolTable.AddSymbol(varDecl.Identifier, 
+                    new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+            }
+            else if (varDecl.Expression is IdentifierExpression ident)
+            {
+                // Проверяем, является ли это generic-параметром класса
+                var identName = ident.Name;
+                if (classDecl != null && !string.IsNullOrEmpty(classDecl.GenericParameter) && 
+                    identName == classDecl.GenericParameter)
+                {
+                    // Это generic-параметр класса - используем его как тип
+                    _symbolTable.AddSymbol(varDecl.Identifier, 
+                        new Symbol(varDecl.Identifier, identName, null));
+                }
+                else if (_hierarchy.IsBuiltInClass(identName) || _hierarchy.ClassExists(identName))
+                {
+                    // Это имя класса
+                    _symbolTable.AddSymbol(varDecl.Identifier, 
+                        new Symbol(varDecl.Identifier, identName, null));
+                }
+                else
+                {
+                    // Неизвестный идентификатор - выводим тип из выражения (вернет "Unknown")
+                    var exprType = InferExpressionType(varDecl.Expression);
+                    _symbolTable.AddSymbol(varDecl.Identifier, 
+                        new Symbol(varDecl.Identifier, exprType, null));
+                }
+            }
+            else if (varDecl.Expression is FunctionalCall funcCall && funcCall.Function is IdentifierExpression funcIdent)
+            {
+                // Обработка var current : Integer(0) - это FunctionalCall с IdentifierExpression
+                var typeName = funcIdent.Name;
+                if (_hierarchy.IsBuiltInClass(typeName) || _hierarchy.ClassExists(typeName))
+                {
+                    _symbolTable.AddSymbol(varDecl.Identifier, 
+                        new Symbol(varDecl.Identifier, typeName, null));
+                }
+            }
+            else
+            {
+                // Для других случаев выводим тип из выражения
+                var exprType = InferExpressionType(varDecl.Expression);
+                _symbolTable.AddSymbol(varDecl.Identifier, 
+                    new Symbol(varDecl.Identifier, exprType, null));
+            }
+        }
+
         private void CheckConstructorDeclarations(ConstructorDeclaration constructor)
         {
-            Console.WriteLine($"DEBUG: ===== CheckConstructorDeclarations =====");
-            
             _currentMethod = "this";
             _symbolTable.EnterScope();
             
@@ -1548,14 +1827,12 @@ namespace OCompiler.Semantic
             if (constructor.Body != null)
             {
                 var constructorVariables = constructor.Body.Elements.OfType<VariableDeclaration>().ToList();
-                Console.WriteLine($"DEBUG: Found {constructorVariables.Count} variables in constructor");
                 
                 foreach (var varDecl in constructorVariables)
                 {
-                    Console.WriteLine($"DEBUG: Processing constructor variable: {varDecl.Identifier}");
-                    
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
+<<<<<<< HEAD
                         var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
                         if (constr.ClassName == "Array" && constr.Arguments.Count == 1)
                         {
@@ -1564,6 +1841,25 @@ namespace OCompiler.Semantic
                         }
                         _symbolTable.AddSymbol(varDecl.Identifier, sym);
                         Console.WriteLine($"DEBUG: Added constructor variable '{varDecl.Identifier}' as {constr.ClassName}[{constr.GenericParameter}]");
+=======
+                        _symbolTable.AddSymbol(varDecl.Identifier, 
+                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                    }
+                    else if (varDecl.Expression is FunctionalCall funcCall && funcCall.Function is IdentifierExpression funcIdent)
+                    {
+                        // Обработка var a : Integer(10) - это FunctionalCall с IdentifierExpression
+                        var typeName = funcIdent.Name;
+                        if (_hierarchy.IsBuiltInClass(typeName) || _hierarchy.ClassExists(typeName))
+                        {
+                            _symbolTable.AddSymbol(varDecl.Identifier, 
+                                new Symbol(varDecl.Identifier, typeName, null));
+                        }
+                        else
+                        {
+                            var exprType = InferExpressionType(varDecl.Expression);
+                            _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                        }
+>>>>>>> 025b1a33d886159225594357f88c3809498b5d67
                     }
                     else
                     {
@@ -1572,12 +1868,15 @@ namespace OCompiler.Semantic
                     }
                 }
                 
-
-                
                 // Проверяем остальные элементы конструктора
                 foreach (var element in constructor.Body.Elements)
                 {
-                    if (!(element is VariableDeclaration)) // Пропускаем объявления - уже обработали
+                    if (element is VariableDeclaration varDecl)
+                    {
+                        // Для переменных проверяем их инициализаторы (аргументы уже должны быть проверены)
+                        CheckExpressionDeclarations(varDecl.Expression);
+                    }
+                    else
                     {
                         CheckElementDeclarations(element);
                     }
@@ -1585,7 +1884,6 @@ namespace OCompiler.Semantic
             }
             
             _symbolTable.ExitScope();
-            Console.WriteLine($"DEBUG: ===== Finished constructor =====");
         }
 
         private bool HasInheritanceCycle(ClassDeclaration classDecl, ProgramNode program)
@@ -1658,6 +1956,13 @@ namespace OCompiler.Semantic
             foreach (var classDecl in program.Classes)
             {
                 _currentClass = classDecl.Name;
+                _symbolTable.EnterScope();
+                
+                // Добавляем переменные уровня класса
+                foreach (var varDecl in classDecl.Members.OfType<VariableDeclaration>())
+                {
+                    AddClassVariable(varDecl, classDecl);
+                }
                 
                 foreach (var member in classDecl.Members)
                 {
@@ -1670,6 +1975,8 @@ namespace OCompiler.Semantic
                         CheckArrayBoundsInConstructor(constructor);
                     }
                 }
+                
+                _symbolTable.ExitScope();
             }
         }
 
@@ -1679,10 +1986,35 @@ namespace OCompiler.Semantic
             
             if (method.Body != null)
             {
+                _symbolTable.EnterScope();
+                
+                // Добавляем параметры метода
+                foreach (var param in method.Header.Parameters)
+                {
+                    _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
+                }
+                
+                // Добавляем переменные метода
+                foreach (var varDecl in method.Body.Elements.OfType<VariableDeclaration>())
+                {
+                    if (varDecl.Expression is ConstructorInvocation constr)
+                    {
+                        _symbolTable.AddSymbol(varDecl.Identifier, 
+                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                    }
+                    else
+                    {
+                        var exprType = InferExpressionType(varDecl.Expression);
+                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                    }
+                }
+                
                 foreach (var element in method.Body.Elements)
                 {
                     CheckArrayBoundsInElement(element);
                 }
+                
+                _symbolTable.ExitScope();
             }
         }
 
@@ -1690,10 +2022,38 @@ namespace OCompiler.Semantic
         {
             _currentMethod = "this";
             
-            foreach (var element in constructor.Body.Elements)
+            _symbolTable.EnterScope();
+            
+            // Добавляем параметры конструктора
+            foreach (var param in constructor.Parameters)
             {
-                CheckArrayBoundsInElement(element);
+                _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
             }
+            
+            // Добавляем переменные конструктора
+            if (constructor.Body != null)
+            {
+                foreach (var varDecl in constructor.Body.Elements.OfType<VariableDeclaration>())
+                {
+                    if (varDecl.Expression is ConstructorInvocation constr)
+                    {
+                        _symbolTable.AddSymbol(varDecl.Identifier, 
+                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                    }
+                    else
+                    {
+                        var exprType = InferExpressionType(varDecl.Expression);
+                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                    }
+                }
+                
+                foreach (var element in constructor.Body.Elements)
+                {
+                    CheckArrayBoundsInElement(element);
+                }
+            }
+            
+            _symbolTable.ExitScope();
         }
 
         private void CheckArrayBoundsInElement(BodyElement element)
@@ -2048,7 +2408,6 @@ namespace OCompiler.Semantic
                 bool isArrayCall = (targetType == "Array" || targetType.StartsWith("Array[")) && 
                                 (methodName == "get" || methodName == "set" || methodName == "Length" || methodName == "toList");
                 
-                Console.WriteLine($"DEBUG: IsArrayMethodCall: {methodName} on {targetType} = {isArrayCall}");
                 return isArrayCall;
             }
             return false;

@@ -3,7 +3,7 @@ class Factorial is
         if n.Less(2) then
             return 1
         else
-            return n.Mul(self.Fact(n.Dec()))
+            return n.Mult(this.fact(n.Minus(1)))
         end
     end
 
@@ -13,7 +13,7 @@ end
 
 class Main is
     this() is
-        var f : Factorial
+        var f : Factorial()
         var result : Integer
         result := f.fact(5)
     end
