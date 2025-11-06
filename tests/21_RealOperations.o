@@ -1,0 +1,13 @@
+class RealOperations is
+    method ProcessReal(r : Real) : Real is
+        var doubled : Real(r.Mult(Real(2.0)))
+        var halved : Real(doubled.Div(Real(4.0)))
+        var added : Real(halved.Plus(Real(1.5)))
+        var subtracted : Real(added.Minus(Real(0.5)))
+        var negated : Real(subtracted.UnaryMinus())
+        return negated
+    end
+
+    this() is
+    end
+end

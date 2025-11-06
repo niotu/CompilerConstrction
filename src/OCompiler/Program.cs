@@ -1,7 +1,7 @@
 using OCompiler.Lexer;
 using OCompiler.Utils;
 using OCompiler.Parser;
-
+using OCompiler.Semantic;
 namespace OCompiler;
 
 /// <summary>
@@ -118,14 +118,103 @@ public class Program
             return;
         }
         var ast = (ProgramNode)parser.CurrentSemanticValue.ast;
-        ast.Print();
 
+        if (Environment.GetCommandLineArgs().Contains("--ast"))
+        {
+            Console.WriteLine("**[ DEBUG ] Abstract Syntax Tree:");
+            ast.Print();
+        }
+       
         // TODO: Semantic Analysis
-        // Console.WriteLine("** Semantic analysis (TODO)");
+        Console.WriteLine("** Semantic analysis (TODO)");
         // var analyzer = new SemanticAnalyzer();
         // analyzer.Analyze(ast);
+        SemanticAnalysis(ast);
 
         Console.WriteLine("**[ OK ] Compilation completed successfully!");
+    }
+    private static void SemanticAnalysis(ProgramNode ast)
+    {
+        Console.WriteLine("**[ INFO ] Starting semantic analysis...");
+        
+        // Создаем иерархию классов
+        var classHierarchy = new ClassHierarchy();
+        
+        // Регистрируем стандартные классы
+        RegisterStandardClasses(classHierarchy);
+        
+        // Регистрируем пользовательские классы
+        foreach (var classDecl in ast.Classes)
+        {
+            classHierarchy.AddClass(classDecl);
+        }
+        
+        // 1. Семантические проверки
+        var semanticChecker = new SemanticChecker(classHierarchy);
+        semanticChecker.Check(ast);
+        
+        if (semanticChecker.Errors.Any())
+        {
+            Console.WriteLine("**[ ERR ] Semantic errors found:");
+            foreach (var error in semanticChecker.Errors)
+            {
+                Console.WriteLine($"  - {error}");
+            }
+            throw new CompilerException("Semantic analysis failed");
+        }
+        
+        Console.WriteLine($"**[ OK ] Semantic checks passed. No errors found.");
+        
+        // Если запрошено только семантический анализ - останавливаемся здесь
+        if (Environment.GetCommandLineArgs().Contains("--semantic-only"))
+        {
+            Console.WriteLine("**[ INFO ] Stopping after semantic analysis (--semantic-only flag)");
+            return;
+        }
+        
+        // 2. Оптимизации
+        if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
+        {
+            Console.WriteLine("**[ INFO ] Starting AST optimizations...");
+            var optimizer = new Optimizer();
+            var optimizedAst = optimizer.Optimize(ast);
+            
+            if (Environment.GetCommandLineArgs().Contains("--ast"))
+            {
+                Console.WriteLine("**[ DEBUG ] Optimized Abstract Syntax Tree:");
+                optimizedAst.Print();
+            }
+            
+            ast = optimizedAst;
+            Console.WriteLine("**[ OK ] AST optimizations completed.");
+        }
+        
+        // // 3. Генерация кода
+        // GenerateCode(ast);
+    }
+
+    private static void RegisterStandardClasses(ClassHierarchy hierarchy)
+    {
+        // Создаем минимальные объявления для стандартных классов
+        var standardClasses = new[]
+        {
+            ("Class", null),
+            ("AnyValue", "Class"),
+            ("Integer", "AnyValue"), 
+            ("Real", "AnyValue"),
+            ("Boolean", "AnyValue"),
+            ("AnyRef", "Class"),
+            ("Array", "AnyRef"),
+            ("List", "AnyRef")
+        };
+        
+        foreach (var (className, baseClass) in standardClasses)
+        {
+            var classDecl = new ClassDeclaration(className, null, baseClass, new List<MemberDeclaration>());
+            hierarchy.AddClass(classDecl);
+        }
+        
+        Console.WriteLine("**[ INFO ] Standard class hierarchy initialized");
     }
 
     private static void PrintTokens(List<Token> tokens)

@@ -1,0 +1,24 @@
+class IntegerComparisons is
+    method Compare(x : Integer, y : Integer) : Boolean is
+        var result : Boolean(false)
+        if x.Less(y) then
+            result := true
+        end
+        if x.Greater(Integer(0)) then
+            result := result.And(true)
+        end
+        if x.LessEqual(y) then
+            result := result.Or(false)
+        end
+        if x.GreaterEqual(Integer(5)) then
+            result := result.Xor(true)
+        end
+        if x.Equal(y) then
+            result := result.Not()
+        end
+        return result
+    end
+
+    this() is
+    end
+end
