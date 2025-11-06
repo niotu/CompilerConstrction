@@ -1,0 +1,13 @@
+class BooleanLogic is
+    method LogicTest(a : Boolean, b : Boolean) : Integer is
+        var andResult : Boolean(a.And(b))
+        var orResult : Boolean(a.Or(b))
+        var xorResult : Boolean(andResult.Xor(orResult))
+        var notResult : Boolean(xorResult.Not())
+        var intValue : Integer(notResult.toInteger())
+        return intValue
+    end
+
+    this() is
+    end
+end

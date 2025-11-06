@@ -1,0 +1,17 @@
+class ListOperations is
+    method BuildList() : Integer is
+        var list : List[Integer](5)
+        list := list.append(Integer(10))
+        list := list.append(Integer(20))
+        list := list.append(Integer(30))
+        
+        var first : Integer(list.head())
+        var rest : List[Integer](list.tail())
+        var second : Integer(rest.head())
+        
+        return first.Plus(second)
+    end
+
+    this() is
+    end
+end

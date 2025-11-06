@@ -80,6 +80,8 @@ namespace OCompiler.Semantic
         public bool IsInitialized { get; set; }
         public bool IsUsed { get; set; }
         public string GenericParameter { get; }
+        public int? ArraySize { get; set; }
+        public ExpressionNode? Initializer { get; set; }
 
         public Symbol(string name, string type, string genericParam = null)
         {
@@ -88,6 +90,7 @@ namespace OCompiler.Semantic
             IsInitialized = false;
             IsUsed = false;
             GenericParameter = genericParam;
+            ArraySize = null;
         }
         public string GetFullTypeName()
         {

@@ -219,7 +219,16 @@ namespace OCompiler.Semantic
                 
                 foreach (var varDecl in classVariables)
                 {
-                    AddClassVariable(varDecl, classDecl);
+                    if (varDecl.Expression is ConstructorInvocation constr)
+                    {
+                        var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                        if (constr.ClassName == "Array" && constr.Arguments.Count == 1)
+                        {
+                            var constSize = TryEvalConstInt(constr.Arguments[0]);
+                            if (constSize.HasValue) sym.ArraySize = constSize.Value;
+                        }
+                        _symbolTable.AddSymbol(varDecl.Identifier, sym);
+                    }
                 }
 
                 // Обрабатываем конструкторы (где объявлены локальные переменные)
@@ -238,6 +247,39 @@ namespace OCompiler.Semantic
                 }
                 
                 _symbolTable.ExitScope();
+                Console.WriteLine($"DEBUG: ===== Finished class: {_currentClass} =====");
+            }
+        }
+        private void PrintCurrentSymbols()
+        {
+            Console.WriteLine("DEBUG: === Current Symbols ===");
+            // Временно добавим принудительный вывод для тестирования
+            var testSymbols = new[] { "arr", "a", "d", "s" };
+            foreach (var name in testSymbols)
+            {
+                var symbol = _symbolTable.Lookup(name);
+                Console.WriteLine($"  {name}: {symbol?.Type}[{symbol?.GenericParameter}]");
+            }
+            Console.WriteLine("DEBUG: =======================");
+        }
+        private void CheckClassVariableDeclaration(VariableDeclaration varDecl)
+        {
+            Console.WriteLine($"DEBUG: Processing class variable: {varDecl.Identifier}");
+            
+            // Анализируем инициализатор и устанавливаем тип
+            if (varDecl.Expression is ConstructorInvocation constr)
+            {
+                string fullType = BuildFullTypeName(constr.ClassName, constr.GenericParameter);
+                Console.WriteLine($"DEBUG: Class variable '{varDecl.Identifier}' initialized with: {fullType}");
+                
+                var symbol = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                symbol.Initializer = constr;
+                _symbolTable.AddSymbol(varDecl.Identifier, symbol);
+            }
+            else
+            {
+                var exprType = InferExpressionType(varDecl.Expression);
+                _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
             }
         }
         private void CheckMethodDeclarations(MethodDeclaration method)
@@ -263,13 +305,34 @@ namespace OCompiler.Semantic
                 {
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
-                        _symbolTable.AddSymbol(varDecl.Identifier, 
-                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                        var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                        if (constr.ClassName == "Array")
+                        {
+                            sym.Initializer = constr; // Сохраняем конструктор массива
+                            Console.WriteLine($"DEBUG: Array variable '{varDecl.Identifier}' - constructor saved. Arguments: {constr.Arguments.Count}");
+                            
+                            if (constr.Arguments.Count > 0)
+                            {
+                                var firstArg = constr.Arguments[0];
+                                if (firstArg is FunctionalCall fc)
+                                {
+                                    Console.WriteLine($"DEBUG: First argument is FunctionalCall: {fc.Function}");
+                                    if (fc.Arguments.Count > 0 && fc.Arguments[0] is IntegerLiteral il)
+                                    {
+                                        Console.WriteLine($"DEBUG: Size value: {il.Value}");
+                                    }
+                                }
+                            }
+                        }
+                        _symbolTable.AddSymbol(varDecl.Identifier, sym);
+                        Console.WriteLine($"DEBUG: Symbol added to table: {varDecl.Identifier} = {sym.Type}");
                     }
                     else
                     {
                         var exprType = InferExpressionType(varDecl.Expression);
-                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                        var sym = new Symbol(varDecl.Identifier, exprType, null);
+                        sym.Initializer = varDecl.Expression;
+                        _symbolTable.AddSymbol(varDecl.Identifier, sym);
                     }
                 }
                 
@@ -436,6 +499,11 @@ namespace OCompiler.Semantic
                     if (isBuiltInConstructor)
                     {
                         CheckBuiltInConstructorCall(new ConstructorInvocation(methodName, null, funcCall.Arguments));
+                    }
+                    // Вызов специальных проверок для встроенных методов (например, деление на ноль)
+                    if (isBuiltInMethodCall && funcCall.Function is MemberAccessExpression builtInMember)
+                    {
+                        CheckBuiltInMethodCall(funcCall, builtInMember.Target, methodName);
                     }
                 }
             }
@@ -783,6 +851,125 @@ namespace OCompiler.Semantic
                     return;
                 }
 
+                // Специальная проверка для методов массива
+                if (targetType.StartsWith("Array["))
+                {
+                    Console.WriteLine($"DEBUG: Array operation: {methodName} on {targetType}");
+                    if (methodName == "get" || methodName == "set")
+                    {
+                        // Получаем размер массива, если он был задан при создании
+                        if (target is IdentifierExpression arrayIdent)
+                        {
+                            Console.WriteLine($"DEBUG: Looking up array symbol: {arrayIdent.Name}");
+                            var arraySymbol = _symbolTable.Lookup(arrayIdent.Name);
+                            Console.WriteLine($"DEBUG: Found array symbol: {arraySymbol?.Type}, has initializer: {arraySymbol?.Initializer != null}");
+                            
+                            if (arraySymbol?.Initializer is ConstructorInvocation arrayConstructor)
+                            {
+                                Console.WriteLine($"DEBUG: Array constructor has {arrayConstructor.Arguments.Count} arguments");
+                                if (arrayConstructor.Arguments.Count > 0)
+                                {
+                                    int? sizeValue = null;
+                                    var sizeArg = arrayConstructor.Arguments[0];
+                                    Console.WriteLine($"DEBUG: Size argument type: {sizeArg.GetType().Name}");
+
+                                    // Проверяем размер массива
+                                    if (sizeArg is FunctionalCall sizeCall)
+                                    {
+                                        Console.WriteLine($"DEBUG: Size is FunctionalCall: {sizeCall.Function}");
+                                        if (sizeCall.Function is IdentifierExpression sizeFunc &&
+                                            sizeFunc.Name == "Integer" &&
+                                            sizeCall.Arguments.Count == 1 &&
+                                            sizeCall.Arguments[0] is IntegerLiteral sizeLiteral)
+                                        {
+                                            sizeValue = sizeLiteral.Value;
+                                            Console.WriteLine($"DEBUG: Found array size: {sizeValue}");
+                                        }
+                                    }
+                                    else if (sizeArg is IntegerLiteral directSize)
+                                    {
+                                        sizeValue = directSize.Value;
+                                        Console.WriteLine($"DEBUG: Found direct size: {sizeValue}");
+                                    }
+
+                                    if (sizeValue.HasValue && funcCall.Arguments.Count > 0)
+                                    {
+                                        int? indexValue = null;
+                                        var indexArg = funcCall.Arguments[0];
+                                        Console.WriteLine($"DEBUG: Index argument type: {indexArg.GetType().Name}");
+
+                                        // Проверяем индекс
+                                        if (indexArg is IntegerLiteral directIndex)
+                                        {
+                                            indexValue = directIndex.Value;
+                                            Console.WriteLine($"DEBUG: Found direct index: {indexValue}");
+                                        }
+                                        else if (indexArg is FunctionalCall indexCall)
+                                        {
+                                            Console.WriteLine($"DEBUG: Index is FunctionalCall: {indexCall.Function}");
+                                            if (indexCall.Function is IdentifierExpression indexFunc &&
+                                                indexFunc.Name == "Integer" &&
+                                                indexCall.Arguments.Count == 1 &&
+                                                indexCall.Arguments[0] is IntegerLiteral indexLiteral)
+                                            {
+                                                indexValue = indexLiteral.Value;
+                                                Console.WriteLine($"DEBUG: Found index value: {indexValue}");
+                                            }
+                                        }
+
+                                        if (indexValue.HasValue)
+                                        {
+                                            Console.WriteLine($"DEBUG: Checking array bounds: index {indexValue.Value} vs size {sizeValue.Value}");
+                                            if (indexValue.Value >= sizeValue.Value || indexValue.Value < 0)
+                                            {
+                                                var error = $"Array index out of bounds: index {indexValue.Value} should be in range [0,{sizeValue.Value-1}]";
+                                                Console.WriteLine($"DEBUG: Adding error: {error}");
+                                                _errors.Add(error);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Если индекс не удалось вычислить статически, добавляем warning
+                                            Console.WriteLine($"DEBUG: Could not statically determine index value");
+                                            _warnings.Add("Could not statically verify array index bounds");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Дополнительная проверка: деление/остаток на ноль для встроенных числовых методов
+                if ((methodName == "Div" || methodName == "Rem") && funcCall.Arguments.Count > 0)
+                {
+                    var denomExpr = funcCall.Arguments[0];
+                    // Попытка получить целочисленный литерал (Integer / IntegerLiteral)
+                    var constInt = TryEvalConstInt(denomExpr);
+                    if (constInt.HasValue && constInt.Value == 0)
+                    {
+                        _errors.Add($"Division by zero detected in '{targetType}.{methodName}'");
+                    }
+                    else
+                    {
+                        // Проверяем для вещественных литералов Real(0.0) или прямого RealLiteral
+                        if (denomExpr is RealLiteral rl)
+                        {
+                            if (Math.Abs(rl.Value) < double.Epsilon)
+                            {
+                                _errors.Add($"Division by zero detected in '{targetType}.{methodName}'");
+                            }
+                        }
+                        else if (denomExpr is FunctionalCall fc && fc.Function is IdentifierExpression id && id.Name == "Real" && fc.Arguments.Count == 1 && fc.Arguments[0] is RealLiteral innerRl)
+                        {
+                            if (Math.Abs(innerRl.Value) < double.Epsilon)
+                            {
+                                _errors.Add($"Division by zero detected in '{targetType}.{methodName}'");
+                            }
+                        }
+                    }
+                }
+
                 // Проверяем аргументы для каждой перегрузки метода
                 bool foundMatch = false;
                 foreach (var method in methods)
@@ -954,6 +1141,22 @@ namespace OCompiler.Semantic
                     {
                         var argType = InferExpressionType(constr.Arguments[i]);
                         var paramType = constructor.Parameters[i].Type;
+                        // Подстановка T для обобщенных классов, если указан generic-параметр в вызове конструктора
+                        if (paramType == "T")
+                        {
+                            if (constr.ClassName == "List" && !string.IsNullOrEmpty(constr.GenericParameter))
+                            {
+                                paramType = constr.GenericParameter;
+                            }
+                            else if (constr.ClassName == "Array" && !string.IsNullOrEmpty(constr.GenericParameter))
+                            {
+                                paramType = constr.GenericParameter;
+                            }
+                            else
+                            {
+                                paramType = "Unknown";
+                            }
+                        }
                         
                         if (!AreTypesCompatible(argType, paramType) && argType != "Unknown")
                         {
@@ -2097,22 +2300,19 @@ namespace OCompiler.Semantic
         private void CheckStaticArrayIndexBounds(ExpressionNode arrayExpr, ExpressionNode indexExpr, string context)
         {
             // Простая статическая проверка для константных индексов
-            if (indexExpr is IntegerLiteral intLiteral)
+            var constIndex = TryEvalConstInt(indexExpr);
+            if (constIndex.HasValue)
             {
-                // Используем безопасный парсинг
-                if (int.TryParse(intLiteral.Value.ToString(), out int indexValue))
+                if (constIndex.Value < 0)
                 {
-                    if (indexValue < 0)
-                    {
-                        _errors.Add($"Array index in {context} is negative: {indexValue}");
-                    }
-                    
-                    // Если можем определить размер массива статически
-                    var arraySize = TryGetStaticArraySize(arrayExpr);
-                    if (arraySize.HasValue && indexValue >= arraySize.Value)
-                    {
-                        _errors.Add($"Array index in {context} is out of bounds: {indexValue} >= {arraySize.Value}");
-                    }
+                    _errors.Add($"Array index in {context} is negative: {constIndex.Value}");
+                }
+                
+                // Если можем определить размер массива статически
+                var arraySize = TryGetStaticArraySize(arrayExpr);
+                if (arraySize.HasValue && constIndex.Value >= arraySize.Value)
+                {
+                    _errors.Add($"Array index in {context} is out of bounds: {constIndex.Value} >= {arraySize.Value}");
                 }
             }
         }
@@ -2180,20 +2380,38 @@ namespace OCompiler.Semantic
             if (arrayExpr is IdentifierExpression ident)
             {
                 var symbol = _symbolTable.Lookup(ident.Name);
-                if (symbol != null)
+                if (symbol != null && symbol.ArraySize.HasValue)
                 {
-                    // Если массив создавался с константным размером, можно его получить
-                    // Это требует отслеживания инициализаций массивов
+                    return symbol.ArraySize.Value;
                 }
             }
             else if (arrayExpr is ConstructorInvocation constr && constr.ClassName == "Array")
             {
-                if (constr.Arguments.Count == 1 && constr.Arguments[0] is IntegerLiteral sizeLiteral)
+                if (constr.Arguments.Count == 1)
                 {
-                    return int.Parse(sizeLiteral.Value.ToString());
+                    var constSize = TryEvalConstInt(constr.Arguments[0]);
+                    if (constSize.HasValue) return constSize.Value;
                 }
             }
             
+            return null;
+        }
+
+        // Вычисление целочисленных констант: IntegerLiteral или Integer(…)
+        private int? TryEvalConstInt(ExpressionNode expr)
+        {
+            if (expr is IntegerLiteral intLiteral)
+            {
+                if (int.TryParse(intLiteral.Value.ToString(), out var v)) return v;
+                return null;
+            }
+            if (expr is FunctionalCall fc && fc.Function is IdentifierExpression id && id.Name == "Integer")
+            {
+                if (fc.Arguments.Count == 1 && fc.Arguments[0] is IntegerLiteral inner)
+                {
+                    if (int.TryParse(inner.Value.ToString(), out var v)) return v;
+                }
+            }
             return null;
         }
 
@@ -2211,16 +2429,5 @@ namespace OCompiler.Semantic
             }
             return false;
         }
-
-        private bool IsArrayType(string typeName)
-        {
-            return typeName != null && typeName.StartsWith("Array[");
-        }
-
-        private bool IsArrayMethod(string methodName)
-        {
-            return methodName == "get" || methodName == "set" || methodName == "Length";
-        }
-
     }
 }

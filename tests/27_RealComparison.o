@@ -1,0 +1,18 @@
+class RealComparisons is
+    method CompareReals(a : Real, b : Real) : Boolean is
+        var isLess : Boolean(a.Less(b))
+        var isGreater : Boolean(a.Greater(Real(0.0)))
+        var isEqual : Boolean(a.Equal(b))
+        var isLessEq : Boolean(a.LessEqual(Real(100.0)))
+        var isGreaterEq : Boolean(b.GreaterEqual(a))
+        
+        var result : Boolean(isLess.Or(isGreater))
+        result := result.And(isEqual.Not())
+        result := result.Or(isLessEq.And(isGreaterEq))
+        
+        return result
+    end
+
+    this() is
+    end
+end
