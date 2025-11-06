@@ -1,0 +1,13 @@
+class IntegerArithmetic is
+    method Calculate(a : Integer, b : Integer) : Integer is
+        var sum : Integer(a.Plus(b))
+        var diff : Integer(sum.Minus(Integer(10)))
+        var product : Integer(diff.Mult(Integer(2)))
+        var quotient : Integer(product.Div(Integer(3)))
+        var remainder : Integer(quotient.Rem(Integer(5)))
+        return remainder
+    end
+
+    this() is
+    end
+end

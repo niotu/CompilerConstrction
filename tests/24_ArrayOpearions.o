@@ -1,0 +1,25 @@
+class ArrayOperations is
+    method ProcessArray() : Integer is
+        var arr : Array[Integer](Integer(5))
+        var i : Integer(0)
+        var out : Integer(arr.get(10))
+        
+        while i.Less(arr.Length()) loop
+            arr.set(i, i.Mult(Integer(2)))
+            i := i.Plus(Integer(1))
+        end
+        
+        var sum : Integer(0)
+        var j : Integer(0)
+        while j.Less(arr.Length()) loop
+            sum := sum.Plus(arr.get(j))
+            j := j.Plus(Integer(1))
+        end
+        
+        var list : arr.toList()
+        return sum
+    end
+
+    this() is
+    end
+end

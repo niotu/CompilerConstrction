@@ -1,0 +1,26 @@
+class ComplexNesting is
+    method NestedCalls(arr : Array[Integer]) : Real is
+        var maxIndex : Integer(arr.Length().Minus(Integer(1)))
+        var firstValue : Integer(arr.get(Integer(0)))
+        var lastValue : Integer(arr.get(maxIndex))
+        
+        var sum : Integer(firstValue.Plus(lastValue))
+        var realSum : Real(sum.toReal())
+        var doubled : Real(realSum.Mult(Real(2.0)))
+        
+        var checkLess : Boolean(firstValue.Less(lastValue))
+        var checkEqual : Boolean(firstValue.Equal(lastValue))
+        var checkResult : Boolean(checkLess.Or(checkEqual))
+        
+        var finalValue : Real(doubled.Div(Real(3.0)))
+        
+        if checkResult then
+            finalValue := finalValue.Plus(Real(10.5))
+        end
+        
+        return finalValue
+    end
+
+    this() is
+    end
+end
