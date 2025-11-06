@@ -1,269 +1,3 @@
-// using OCompiler.Parser;
-// namespace OCompiler.Semantic
-// {
-//     public class Optimizer
-//     {
-//         private readonly ClassHierarchy _hierarchy;
-
-//         public Optimizer(ClassHierarchy hierarchy)
-//         {
-//             _hierarchy = hierarchy;
-//         }
-
-//         public ProgramNode Optimize(ProgramNode program)
-//         {
-//             var optimizedClasses = program.Classes.Select(OptimizeClass).ToList();
-            
-//             // 1. Удаление неиспользуемых методов
-//             optimizedClasses = RemoveUnusedMethods(optimizedClasses);
-            
-//             // 2. Inline простых методов
-//             optimizedClasses = InlineSimpleMethods(optimizedClasses);
-            
-//             // 3. Упрощение цепочек вызовов
-//             optimizedClasses = SimplifyCallChains(optimizedClasses);
-            
-//             // 4. Специализация для стандартных типов
-//             optimizedClasses = SpecializeForStandardTypes(optimizedClasses);
-
-//             return new ProgramNode(optimizedClasses);
-//         }
-
-//         // 1. Удаление неиспользуемых методов
-//         private List<ClassDeclaration> RemoveUnusedMethods(List<ClassDeclaration> classes)
-//         {
-//             var usedMethods = CollectUsedMethods(classes);
-//             var result = new List<ClassDeclaration>();
-            
-//             foreach (var classDecl in classes)
-//             {
-//                 var usedMembers = classDecl.Members.Where(member =>
-//                     member is not MethodDeclaration method ||
-//                     usedMethods.Contains($"{classDecl.Name}.{method.Header.Name}") ||
-//                     IsConstructor(method) ||
-//                     IsPublicInterface(method)).ToList();
-                    
-//                 result.Add(new ClassDeclaration(classDecl.Name, classDecl.GenericParameter,
-//                     classDecl.BaseClass, usedMembers));
-//             }
-            
-//             return result;
-//         }
-
-//         // 2. Inline простых методов
-//         private List<ClassDeclaration> InlineSimpleMethods(List<ClassDeclaration> classes)
-//         {
-//             return classes.Select(classDecl =>
-//             {
-//                 var inlineCandidates = classDecl.Members.OfType<MethodDeclaration>()
-//                     .Where(m => IsInlineCandidate(m))
-//                     .ToDictionary(m => m.Header.Name);
-                
-//                 var optimizedMembers = classDecl.Members.Select(member =>
-//                 {
-//                     if (member is MethodDeclaration method)
-//                     {
-//                         return InlineMethodCalls(method, inlineCandidates);
-//                     }
-//                     return member;
-//                 }).ToList();
-                
-//                 return new ClassDeclaration(classDecl.Name, classDecl.GenericParameter,
-//                     classDecl.BaseClass, optimizedMembers);
-//             }).ToList();
-//         }
-
-//         private MethodDeclaration InlineMethodCalls(MethodDeclaration method, 
-//             Dictionary<string, MethodDeclaration> inlineCandidates)
-//         {
-//             if (method.Body == null) return method;
-            
-//             var optimizedBody = InlineCallsInBody(method.Body, inlineCandidates);
-//             return new MethodDeclaration(method.Header, optimizedBody);
-//         }
-
-//         // 3. Упрощение цепочек вызовов
-//         private List<ClassDeclaration> SimplifyCallChains(List<ClassDeclaration> classes)
-//         {
-//             return classes.Select(classDecl =>
-//             {
-//                 var optimizedMembers = classDecl.Members.Select(member =>
-//                 {
-//                     return member switch
-//                     {
-//                         MethodDeclaration method => SimplifyMethodCalls(method),
-//                         ConstructorDeclaration constr => SimplifyConstructorCalls(constr),
-//                         _ => member
-//                     };
-//                 }).ToList();
-                
-//                 return new ClassDeclaration(classDecl.Name, classDecl.GenericParameter,
-//                     classDecl.BaseClass, optimizedMembers);
-//             }).ToList();
-//         }
-
-//         private MethodDeclaration SimplifyMethodCalls(MethodDeclaration method)
-//         {
-//             if (method.Body == null) return method;
-            
-//             var optimizedElements = method.Body.Elements.Select(element =>
-//             {
-//                 if (element is ExpressionStatement exprStmt)
-//                 {
-//                     var simplifiedExpr = SimplifyExpression(exprStmt.Expression);
-//                     return new ExpressionStatement(simplifiedExpr);
-//                 }
-//                 return element;
-//             }).ToList();
-            
-//             return new MethodDeclaration(method.Header, new MethodBodyNode(optimizedElements));
-//         }
-
-//         private ExpressionNode SimplifyExpression(ExpressionNode expr)
-//         {
-//             return expr switch
-//             {
-//                 MemberAccessExpression memberAccess => SimplifyMemberAccess(memberAccess),
-//                 FunctionalCall funcCall => SimplifyFunctionalCall(funcCall),
-//                 _ => expr
-//             };
-//         }
-
-//         private ExpressionNode SimplifyMemberAccess(MemberAccessExpression expr)
-//         {
-//             // Упрощение цепочек вида obj.getX().getY() -> obj.getY() если возможно
-//             if (expr.Expression is FunctionalCall innerCall && 
-//                 innerCall.Target is MemberAccessExpression innerMember)
-//             {
-//                 // Проверяем можно ли объединить вызовы
-//                 if (CanCombineCalls(innerCall, expr.Member))
-//                 {
-//                     return new FunctionalCall(
-//                         innerMember.Expression,
-//                         new List<ExpressionNode> { expr.Member }
-//                     );
-//                 }
-//             }
-            
-//             return expr;
-//         }
-
-//         // 4. Специализация для стандартных типов
-//         private List<ClassDeclaration> SpecializeForStandardTypes(List<ClassDeclaration> classes)
-//         {
-//             return classes.Select(classDecl =>
-//             {
-//                 var optimizedMembers = classDecl.Members.Select(member =>
-//                 {
-//                     if (member is MethodDeclaration method)
-//                     {
-//                         return SpecializeMethodForTypes(method);
-//                     }
-//                     return member;
-//                 }).ToList();
-                
-//                 return new ClassDeclaration(classDecl.Name, classDecl.GenericParameter,
-//                     classDecl.BaseClass, optimizedMembers);
-//             }).ToList();
-//         }
-
-//         private MethodDeclaration SpecializeMethodForTypes(MethodDeclaration method)
-//         {
-//             // Специализация методов работающих со стандартными типами
-//             if (method.Body == null) return method;
-            
-//             var optimizedElements = method.Body.Elements.Select(element =>
-//             {
-//                 if (element is ExpressionStatement exprStmt)
-//                 {
-//                     var specializedExpr = SpecializeExpression(exprStmt.Expression);
-//                     return new ExpressionStatement(specializedExpr);
-//                 }
-//                 return element;
-//             }).ToList();
-            
-//             return new MethodDeclaration(method.Header, new MethodBodyNode(optimizedElements));
-//         }
-
-//         private ExpressionNode SpecializeExpression(ExpressionNode expr)
-//         {
-//             // Замена вызовов методов стандартных классов на более эффективные эквиваленты
-//             if (expr is FunctionalCall funcCall && funcCall.Target is IdentifierExpression ident)
-//             {
-//                 var type = _symbolTable.Lookup(ident.Name)?.Type;
-                
-//                 // Специализация для Integer
-//                 if (type == "Integer" && funcCall.Arguments.Count == 1)
-//                 {
-//                     return SpecializeIntegerCall(ident.Name, funcCall);
-//                 }
-                
-//                 // Специализация для Boolean
-//                 if (type == "Boolean" && funcCall.Arguments.Count == 1)
-//                 {
-//                     return SpecializeBooleanCall(ident.Name, funcCall);
-//                 }
-//             }
-            
-//             return expr;
-//         }
-
-//         private ExpressionNode SpecializeIntegerCall(string methodName, FunctionalCall call)
-//         {
-//             // Замена x.Plus(1) на более эффективную операцию если возможно
-//             if (methodName == "Plus" && call.Arguments[0] is IntegerLiteral literal && literal.Value == 1)
-//             {
-//                 // В реальной реализации здесь была бы замена на инкремент
-//                 return call; // Заглушка
-//             }
-            
-//             return call;
-//         }
-
-//         // Вспомогательные методы
-//         private HashSet<string> CollectUsedMethods(List<ClassDeclaration> classes)
-//         {
-//             var used = new HashSet<string>();
-            
-//             foreach (var classDecl in classes)
-//             {
-//                 // Конструкторы всегда используются
-//                 used.Add($"{classDecl.Name}.this");
-                
-//                 foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
-//                 {
-//                     if (member.Body != null)
-//                     {
-//                         CollectMethodCalls(member.Body, used);
-//                     }
-//                 }
-//             }
-            
-//             return used;
-//         }
-
-//         private bool IsInlineCandidate(MethodDeclaration method)
-//         {
-//             return method.Body != null && 
-//                    method.Header.Parameters.Count <= 3 &&
-//                    EstimateMethodSize(method.Body) < 10; // Маленькие методы
-//         }
-
-//         private int EstimateMethodSize(MethodBodyNode body)
-//         {
-//             return body.Elements.Count;
-//         }
-
-//         private bool CanCombineCalls(FunctionalCall innerCall, ExpressionNode outerMember)
-//         {
-//             // Проверяем можно ли объединить два последовательных вызова
-//             // Например: list.get(0).toString() -> list.toStringAt(0)
-//             return innerCall.Target is MemberAccessExpression;
-//         }
-//     }
-// }
-
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -273,24 +7,26 @@ namespace OCompiler.Semantic
 {
     public class Optimizer
     {
-        private readonly ClassHierarchy _hierarchy;
-
-        public Optimizer(ClassHierarchy hierarchy)
-        {
-            _hierarchy = hierarchy;
-        }
-
         public ProgramNode Optimize(ProgramNode program)
         {
-            var optimizedClasses = program.Classes.Select(OptimizeClass).ToList();
-            
-            // 1. Удаление неиспользуемых методов
-            optimizedClasses = RemoveUnusedMethods(optimizedClasses, program);
-            
-            return new ProgramNode(optimizedClasses);
+            var classes = program.Classes.ToList();
+
+            classes = RemoveUnusedMethods(classes, program);
+            classes = ConstantFold(classes);
+            classes = SimplifyConditionals(classes);
+            classes = RemoveUnreachableCode(classes);
+            classes = RemoveUnusedVariables(classes);
+
+            classes = ConstantFold(classes);
+            classes = SimplifyConditionals(classes);
+            classes = RemoveUnreachableCode(classes);
+
+            return new ProgramNode(classes);
         }
 
-        private ClassDeclaration OptimizeClass(ClassDeclaration classDecl)
+
+        // 1) 
+                private ClassDeclaration OptimizeClass(ClassDeclaration classDecl)
         {
             var optimizedMembers = classDecl.Members.Select(member =>
             {
@@ -318,7 +54,7 @@ namespace OCompiler.Semantic
             
             foreach (var element in method.Body.Elements)
             {
-                // Удаление кода после return
+
                 if (foundReturn)
                 {
                     continue;
@@ -336,18 +72,12 @@ namespace OCompiler.Semantic
             return new MethodDeclaration(method.Header, optimizedBody);
         }
 
-        // 1. Удаление неиспользуемых методов
+
         private List<ClassDeclaration> RemoveUnusedMethods(List<ClassDeclaration> classes, ProgramNode program)
         {
             var usedMethods = CollectUsedMethods(classes, program);
             var result = new List<ClassDeclaration>();
-            
-            // Для отладки - выводим используемые методы
-            Console.WriteLine("**[ DEBUG ] Used methods:");
-            foreach (var method in usedMethods.OrderBy(m => m))
-            {
-                Console.WriteLine($"  - {method}");
-            }
+
             
             foreach (var classDecl in classes)
             {
@@ -534,7 +264,7 @@ namespace OCompiler.Semantic
             {
                 string fullMethodName = $"{targetClass}.{methodName}";
                 used.Add(fullMethodName);
-                Console.WriteLine($"[DEBUG] Found method call: {fullMethodName}");
+
             }
             
             // Рекурсивно обрабатываем аргументы
@@ -640,5 +370,283 @@ namespace OCompiler.Semantic
             
             return null;
         }
+        private List<ClassDeclaration> ConstantFold(List<ClassDeclaration> classes)
+        {
+            return classes.Select(c => new ClassDeclaration(
+                c.Name, c.GenericParameter, c.Extension,
+                c.Members.Select(OptimizeMemberExpressions).ToList()
+            )).ToList();
+        }
+
+        private MemberDeclaration OptimizeMemberExpressions(MemberDeclaration m)
+        {
+            switch (m)
+            {
+                case MethodDeclaration md when md.Body != null:
+                    return new MethodDeclaration(md.Header,
+                        new MethodBodyNode(md.Body.Elements.Select(ConstantFoldElement).ToList())
+                    );
+
+                case ConstructorDeclaration cd:
+                    return new ConstructorDeclaration(cd.Parameters,
+                        new MethodBodyNode(cd.Body.Elements.Select(ConstantFoldElement).ToList())
+                    );
+            }
+            return m;
+        }
+
+        private BodyElement ConstantFoldElement(BodyElement e)
+        {
+            switch (e)
+            {
+                case Assignment a:
+                    return new Assignment(a.Identifier, Fold(a.Expression));
+
+                case VariableDeclaration v:
+                    return new VariableDeclaration(v.Identifier, Fold(v.Expression));
+
+                case ExpressionStatement s:
+                    return new ExpressionStatement(Fold(s.Expression));
+
+                case ReturnStatement r when r.Expression != null:
+                    return new ReturnStatement(Fold(r.Expression));
+
+                case IfStatement i:
+                    return new IfStatement(
+                        Fold(i.Condition),
+                        new MethodBodyNode(i.ThenBody.Elements.Select(ConstantFoldElement).ToList()),
+                        i.ElseBody == null ? null :
+                            new ElsePart(new MethodBodyNode(i.ElseBody.Body.Elements.Select(ConstantFoldElement).ToList()))
+                    );
+
+                case WhileLoop w:
+                    return new WhileLoop(
+                        Fold(w.Condition),
+                        new MethodBodyNode(w.Body.Elements.Select(ConstantFoldElement).ToList())
+                    );
+            }
+            return e;
+        }
+
+        private ExpressionNode Fold(ExpressionNode expr)
+        {
+
+            if (expr is FunctionalCall call)
+            {
+                var func = Fold(call.Function);
+                var args = call.Arguments.Select(Fold).ToList();
+                return TryEvalMethod(func, args) ?? new FunctionalCall(func, args);
+            }
+            if (expr is MemberAccessExpression ma)
+                return new MemberAccessExpression(Fold(ma.Target), Fold(ma.Member));
+            if (expr is ConstructorInvocation ci)
+                return new ConstructorInvocation(ci.ClassName, ci.GenericParameter, ci.Arguments.Select(Fold).ToList());
+
+            return NormalizeLiteral(expr);
+        }
+        private ExpressionNode NormalizeLiteral(ExpressionNode expr)
+        {
+            if (expr is ConstructorInvocation ci)
+            {
+                // Integer(5) → IntegerLiteral("5")
+                if (ci.ClassName == "Integer" && ci.Arguments.Count == 1 && ci.Arguments[0] is IntegerLiteral lit1)
+                    return new IntegerLiteral(lit1.Value);
+
+                // Boolean(true) → BooleanLiteral("true")
+                if (ci.ClassName == "Boolean" && ci.Arguments.Count == 1 && ci.Arguments[0] is BooleanLiteral lit2)
+                    return new BooleanLiteral(lit2.Value);
+            }
+            return expr;
+        }
+
+        private ExpressionNode TryEvalMethod(ExpressionNode func, List<ExpressionNode> args)
+        {
+            // <literal>.Method(<literal>)
+            if (func is MemberAccessExpression ma && args.Count == 1)
+            {
+                var left = ma.Target;
+                var method = ma.Member as IdentifierExpression;
+                if (method == null) return null;
+
+                if (IsIntLit(left) && IsIntLit(args[0]))
+                {
+                    int a = ((IntegerLiteral)left).Value;
+                    int b = ((IntegerLiteral)args[0]).Value;
+
+                    switch (method.Name)
+                    {
+                        case "Plus": return new IntegerLiteral((a + b));
+                        case "Minus": return new IntegerLiteral((a - b));
+                        case "Mult": return new IntegerLiteral((a * b));
+                        case "Div": return b != 0 ? new IntegerLiteral((a / b)) : null;
+                        case "Less": return new BooleanLiteral((a < b));
+                        case "Greater": return new BooleanLiteral((a > b));
+                        case "Equal": return new BooleanLiteral((a == b));
+                    }
+                }
+
+                if (IsBoolLit(left) && IsBoolLit(args[0]))
+                {
+                    bool a = ((BooleanLiteral)left).Value;
+                    bool b = ((BooleanLiteral)args[0]).Value;
+
+                    switch (method.Name)
+                    {
+                        case "And": return new BooleanLiteral((a && b));
+                        case "Or": return new BooleanLiteral((a || b));
+                        case "Xor": return new BooleanLiteral((a ^ b));
+                        case "Equal": return new BooleanLiteral((a == b));
+                    }
+                }
+            }
+            return null;
+        }
+
+        private bool IsIntLit(ExpressionNode e) => e is IntegerLiteral;
+        private bool IsBoolLit(ExpressionNode e) => e is BooleanLiteral;
+
+        // ============================================
+        // 2) Simplify IF / WHILE when condition is literal
+        // ============================================
+
+        private List<ClassDeclaration> SimplifyConditionals(List<ClassDeclaration> classes)
+        {
+            return classes.Select(c => new ClassDeclaration(
+                c.Name, c.GenericParameter, c.Extension,
+                c.Members.Select(SimplifyInMember).ToList()
+            )).ToList();
+        }
+
+        private MemberDeclaration SimplifyInMember(MemberDeclaration m)
+        {
+            if (m is MethodDeclaration md && md.Body != null)
+                return new MethodDeclaration(md.Header, new MethodBodyNode(SimplifyList(md.Body.Elements)));
+
+            if (m is ConstructorDeclaration cd)
+                return new ConstructorDeclaration(cd.Parameters, new MethodBodyNode(SimplifyList(cd.Body.Elements)));
+
+            return m;
+        }
+
+        private List<BodyElement> SimplifyList(IEnumerable<BodyElement> elems)
+        {
+            var list = new List<BodyElement>();
+            foreach (var e in elems)
+            {
+                if (e is IfStatement i && i.Condition is BooleanLiteral b)
+                {
+                    if (b.Value)
+                        list.AddRange(i.ThenBody.Elements);
+                    else if (i.ElseBody != null)
+                        list.AddRange(i.ElseBody.Body.Elements);
+                    continue;
+                }
+                if (e is WhileLoop w && w.Condition is BooleanLiteral bl && !bl.Value)
+                    continue;
+
+                list.Add(e);
+            }
+            return list;
+        }
+
+        // ============================================
+        // 3) Remove unreachable code after return
+        // ============================================
+
+        private List<ClassDeclaration> RemoveUnreachableCode(List<ClassDeclaration> classes)
+        {
+            return classes.Select(c => new ClassDeclaration(
+                c.Name, c.GenericParameter, c.Extension,
+                c.Members.Select(RemoveInMember).ToList()
+            )).ToList();
+        }
+
+        private MemberDeclaration RemoveInMember(MemberDeclaration m)
+        {
+            if (m is MethodDeclaration md && md.Body != null)
+                return new MethodDeclaration(md.Header, new MethodBodyNode(RemoveReturnTail(md.Body.Elements)));
+
+            if (m is ConstructorDeclaration cd)
+                return new ConstructorDeclaration(cd.Parameters, new MethodBodyNode(RemoveReturnTail(cd.Body.Elements)));
+
+            return m;
+        }
+
+        private List<BodyElement> RemoveReturnTail(IEnumerable<BodyElement> elems)
+        {
+            var res = new List<BodyElement>();
+            foreach (var e in elems)
+            {
+                res.Add(e);
+                if (e is ReturnStatement)
+                    break;
+            }
+            return res;
+        }
+
+        // ============================================
+        // 4) Remove unused variables
+        // ============================================
+
+        private List<ClassDeclaration> RemoveUnusedVariables(List<ClassDeclaration> classes)
+        {
+            var used = new HashSet<string>();
+            foreach (var c in classes)
+                foreach (var m in c.Members.OfType<MethodDeclaration>())
+                    if (m.Body != null)
+                        CollectUsed(m.Body.Elements, used);
+
+            return classes.Select(c => new ClassDeclaration(
+                c.Name, c.GenericParameter, c.Extension,
+                c.Members.Select(m => RemoveVars(m, used)).ToList()
+            )).ToList();
+        }
+
+        private void CollectUsed(IEnumerable<BodyElement> elems, HashSet<string> used)
+        {
+            foreach (var e in elems)
+            {
+                switch (e)
+                {
+                    case Assignment a:
+                        used.Add(a.Identifier);
+                        CollectExpr(a.Expression); break;
+                    case VariableDeclaration v:
+                        CollectExpr(v.Expression); break;
+                    case ReturnStatement r:
+                        if (r.Expression != null) CollectExpr(r.Expression); break;
+                    case ExpressionStatement s:
+                        CollectExpr(s.Expression); break;
+                }
+            }
+
+            void CollectExpr(ExpressionNode e)
+            {
+                if (e is IdentifierExpression id) used.Add(id.Name);
+                if (e is FunctionalCall fc)
+                {
+                    CollectExpr(fc.Function);
+                    foreach (var a in fc.Arguments) CollectExpr(a);
+                }
+                if (e is MemberAccessExpression ma)
+                {
+                    CollectExpr(ma.Target);
+                    CollectExpr(ma.Member);
+                }
+            }
+        }
+
+        private MemberDeclaration RemoveVars(MemberDeclaration m, HashSet<string> used)
+        {
+            if (m is MethodDeclaration md && md.Body != null)
+            {
+                var newElems = md.Body.Elements
+                    .Where(e => !(e is VariableDeclaration v && !used.Contains(v.Identifier)))
+                    .ToList();
+                return new MethodDeclaration(md.Header, new MethodBodyNode(newElems));
+            }
+            return m;
+        }
+
     }
 }

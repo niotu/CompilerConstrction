@@ -173,7 +173,7 @@ public class Program
         if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
         {
             Console.WriteLine("**[ INFO ] Starting AST optimizations...");
-            var optimizer = new Optimizer(classHierarchy);
+            var optimizer = new Optimizer();
             var optimizedAst = optimizer.Optimize(ast);
             
             if (Environment.GetCommandLineArgs().Contains("--debug"))
