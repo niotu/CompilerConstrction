@@ -23,7 +23,6 @@ class Test is
         var arr : Array[Integer](10)
         arr.get(11)
 
-        a.Speak()
         var s : Integer(d.Speak()) // 22222
     end
 end

@@ -11,7 +11,7 @@ namespace OCompiler.Semantic
         {
             var classes = program.Classes.ToList();
 
-            classes = RemoveUnusedMethods(classes, program);
+            // classes = RemoveUnusedMethods(classes, program);
             classes = ConstantFold(classes);
             classes = SimplifyConditionals(classes);
             classes = RemoveUnreachableCode(classes);

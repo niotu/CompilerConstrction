@@ -206,6 +206,26 @@ namespace OCompiler.Semantic
             }
         }
 
+        private List<VariableDeclaration> GetClassVariables(ClassDeclaration classDecl)
+        {
+            var variables = new List<VariableDeclaration>();
+            
+            // Сначала добавляем переменные из базового класса
+            if (!string.IsNullOrEmpty(classDecl.Extension))
+            {
+                var baseClass = _hierarchy.GetClass(classDecl.Extension);
+                if (baseClass != null)
+                {
+                    variables.AddRange(GetClassVariables(baseClass));
+                }
+            }
+            
+            // Затем добавляем переменные текущего класса
+            variables.AddRange(classDecl.Members.OfType<VariableDeclaration>());
+            
+            return variables;
+        }
+        
         // 2. Declarations Before Usage
         private void CheckDeclarationsBeforeUsage(ProgramNode program)
         {
@@ -214,10 +234,10 @@ namespace OCompiler.Semantic
                 _currentClass = classDecl.Name;
                 _symbolTable.EnterScope();
 
-                // Обрабатываем переменные уровня класса
-                var classVariables = classDecl.Members.OfType<VariableDeclaration>().ToList();
+                // Обрабатываем все переменные класса, включая унаследованные
+                var allClassVars = GetClassVariables(classDecl);
                 
-                foreach (var varDecl in classVariables)
+                foreach (var varDecl in allClassVars)
                 {
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
@@ -228,6 +248,12 @@ namespace OCompiler.Semantic
                             if (constSize.HasValue) sym.ArraySize = constSize.Value;
                         }
                         _symbolTable.AddSymbol(varDecl.Identifier, sym);
+                    }
+                    else
+                    {
+                        // Добавляем переменные других типов
+                        var exprType = InferExpressionType(varDecl.Expression);
+                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, ""));
                     }
                 }
 
