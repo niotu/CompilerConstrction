@@ -97,3 +97,6 @@ Thumbs.db
 tmp/
 temp/
 .fake
+
+# test results
+test-results/

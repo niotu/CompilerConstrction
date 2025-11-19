@@ -1,3 +1,4 @@
+using System;
 using OCompiler.Utils;
 
 namespace OCompiler.Lexer;

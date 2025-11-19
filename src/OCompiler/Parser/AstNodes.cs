@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace OCompiler.Parser
 {
     public abstract class AstNode

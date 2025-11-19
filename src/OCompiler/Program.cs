@@ -2,12 +2,24 @@ using OCompiler.Lexer;
 using OCompiler.Utils;
 using OCompiler.Parser;
 using OCompiler.Semantic;
+using OCompiler.CodeGen; // НОВОЕ: Импорт модуля генерации кода
+using System.Reflection;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;  // НОВОЕ: Для работы со сборками
+
 namespace OCompiler;
 
 /// <summary>
 /// O language compiler main program
 /// Part of Compiler Construction course at Innopolis University
 /// Dmitriy Lukiyanov (SD-03), Ramil Aminov (SD-01)
+/// 
+/// CHANGELOG:
+/// - Added code generation phase using System.Reflection.Emit
+/// - Added --codegen, --run, --save-assembly command line options
+/// - Integrated CodeGenerator into compilation pipeline
 /// </summary>
 public class Program
 {
@@ -55,6 +67,7 @@ public class Program
         Console.WriteLine("╔═══════════════════════════════════╗");
         Console.WriteLine("║         O Language Compiler       ║");
         Console.WriteLine("║             LI7 Team              ║");
+        Console.WriteLine("║    with IL Code Generation        ║"); // НОВОЕ
         Console.WriteLine("╚═══════════════════════════════════╝");
         Console.WriteLine();
     }
@@ -65,23 +78,39 @@ public class Program
         Console.WriteLine("  OCompiler <file.o> [options]");
         Console.WriteLine();
         Console.WriteLine("** Options:");
-        Console.WriteLine("  --debug        Show all debug information");
-        Console.WriteLine("  --tokens-only  Lexical analysis only(tokens output)");
+        Console.WriteLine("  --debug              Show all debug information");
+        Console.WriteLine("  --tokens-only        Lexical analysis only (tokens output)");
+        Console.WriteLine("  --tokens-to-file     Save tokens to file");
+        Console.WriteLine("  --ast                Print Abstract Syntax Tree");
+        Console.WriteLine("  --semantic-only      Stop after semantic analysis");
+        Console.WriteLine("  --no-optimize        Skip AST optimizations");
+        
+        // НОВЫЕ опции для генерации кода
+        Console.WriteLine("  --no-codegen         Skip code generation phase");
+        Console.WriteLine("  --run                Execute generated assembly after compilation");
+        Console.WriteLine("  --save-assembly <path>  Save generated assembly to file (.dll)");
+        Console.WriteLine("  --emit-il            Print generated IL instructions (debug)");
+        
         Console.WriteLine();
         Console.WriteLine("** Test examples:");
         Console.WriteLine("  tests/01_Hello.o");
         Console.WriteLine("  tests/03_ArraySquare.o");
         Console.WriteLine("  tests/04_InheritanceValid.o");
         Console.WriteLine();
+        Console.WriteLine("** Code generation examples:");
+        Console.WriteLine("  OCompiler tests/01_Hello.o --run");
+        Console.WriteLine("  OCompiler tests/08_RecursiveFactorial.o --save-assembly factorial.dll");
+        Console.WriteLine();
     }
 
     private static void CompileFile(string fileName)
     {
-        // Чтение исходного кода
+        // ============================================================
+        // ФАЗА 1: ЛЕКСИЧЕСКИЙ АНАЛИЗ
+        // ============================================================
         string sourceCode = File.ReadAllText(fileName);
         Console.WriteLine($"**[ INFO ] Symbols read: {sourceCode.Length} ");
 
-        // Лексический анализ
         Console.WriteLine("**[ INFO ] Starting lexical analysis...");
         var lexer = new OLexer(sourceCode, fileName);
         var tokens = lexer.Tokenize();
@@ -92,6 +121,7 @@ public class Program
         if (Environment.GetCommandLineArgs().Contains("--tokens-only"))
         {
             PrintTokens(tokens);
+            return; // Останавливаемся после лексического анализа
         }
 
         if (Environment.GetCommandLineArgs().Contains("--tokens-to-file"))
@@ -99,24 +129,36 @@ public class Program
             PrintTokensToFile(tokens);
         }
 
-        SyntaxAnalysis(tokens);
+        // ============================================================
+        // ФАЗА 2: СИНТАКСИЧЕСКИЙ АНАЛИЗ
+        // ============================================================
+        var ast = SyntaxAnalysis(tokens);
+        if (ast == null)
+        {
+            Console.WriteLine("**[ ERR ] Syntax analysis failed");
+            return;
+        }
         
+        // ============================================================
+        // ФАЗЫ 3-5: СЕМАНТИКА, ОПТИМИЗАЦИЯ, ГЕНЕРАЦИЯ КОДА
+        // ============================================================
+        SemanticAnalysisAndCodeGen(ast, fileName);
     }
 
-    private static void SyntaxAnalysis(List<Token> tokens)
+    private static ProgramNode? SyntaxAnalysis(List<Token> tokens)
     {
         Console.WriteLine("**[ INFO ] Starting syntax analysis...");
         var scanner = new ManualLexerAdapter(tokens);
-        // Console.WriteLine("Type of output: " ,scanner.GetType());
         var parser = new OCompiler.Parser.Parser(scanner);
 
         bool success = parser.Parse();
 
         if (!success)
         {
-            Console.WriteLine("Parsing Error");
-            return;
+            Console.WriteLine("**[ ERR ] Parsing failed");
+            return null;
         }
+        
         var ast = (ProgramNode)parser.CurrentSemanticValue.ast;
 
         if (Environment.GetCommandLineArgs().Contains("--ast"))
@@ -124,17 +166,16 @@ public class Program
             Console.WriteLine("**[ DEBUG ] Abstract Syntax Tree:");
             ast.Print();
         }
-       
-        // TODO: Semantic Analysis
-        Console.WriteLine("** Semantic analysis (TODO)");
-        // var analyzer = new SemanticAnalyzer();
-        // analyzer.Analyze(ast);
-        SemanticAnalysis(ast);
 
-        Console.WriteLine("**[ OK ] Compilation completed successfully!");
+        Console.WriteLine("**[ OK ] Syntax analysis completed successfully!");
+        return ast;
     }
-    private static void SemanticAnalysis(ProgramNode ast)
+    
+    private static void SemanticAnalysisAndCodeGen(ProgramNode ast, string sourceFileName)
     {
+        // ============================================================
+        // ФАЗА 3: СЕМАНТИЧЕСКИЙ АНАЛИЗ
+        // ============================================================
         Console.WriteLine("**[ INFO ] Starting semantic analysis...");
         
         // Создаем иерархию классов
@@ -149,7 +190,7 @@ public class Program
             classHierarchy.AddClass(classDecl);
         }
         
-        // 1. Семантические проверки
+        // Семантические проверки
         var semanticChecker = new SemanticChecker(classHierarchy);
         semanticChecker.Check(ast);
         
@@ -172,26 +213,228 @@ public class Program
             return;
         }
         
-        // 2. Оптимизации
+        // ============================================================
+        // ФАЗА 4: ОПТИМИЗАЦИЯ AST
+        // ============================================================
         if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
         {
             Console.WriteLine("**[ INFO ] Starting AST optimizations...");
             var optimizer = new Optimizer();
-            var optimizedAst = optimizer.Optimize(ast);
+            ast = optimizer.Optimize(ast);
             
             if (Environment.GetCommandLineArgs().Contains("--ast"))
             {
                 Console.WriteLine("**[ DEBUG ] Optimized Abstract Syntax Tree:");
-                optimizedAst.Print();
+                ast.Print();
             }
             
-            ast = optimizedAst;
             Console.WriteLine("**[ OK ] AST optimizations completed.");
         }
         
-        // // 3. Генерация кода
-        // GenerateCode(ast);
+        // ============================================================
+        // ФАЗА 5: ГЕНЕРАЦИЯ КОДА (НОВАЯ ФАЗА)
+        // ============================================================
+        if (!Environment.GetCommandLineArgs().Contains("--no-codegen"))
+        {
+            GenerateCode(ast, classHierarchy, sourceFileName);
+        }
+        else
+        {
+            Console.WriteLine("**[ INFO ] Code generation skipped (--no-codegen flag)");
+        }
+
+        Console.WriteLine("**[ OK ] Compilation completed successfully!");
     }
+
+    // ============================================================
+    // НОВАЯ ФУНКЦИЯ: ГЕНЕРАЦИЯ КОДА
+    // ============================================================
+    private static void GenerateCode(ProgramNode ast, ClassHierarchy hierarchy, string sourceFileName)
+    {
+        Console.WriteLine("**[ INFO ] Starting code generation...");
+        
+        try
+        {
+            // Получаем имя для сборки из имени файла
+            string assemblyName = Path.GetFileNameWithoutExtension(sourceFileName);
+            
+            // Создаем генератор кода
+            var codeGenerator = new CodeGenerator(assemblyName, hierarchy);
+            
+            // Генерируем сборку
+            Assembly generatedAssembly = codeGenerator.Generate(ast);
+            
+            Console.WriteLine("**[ OK ] Code generation completed successfully!");
+            
+            // Опционально: вывод сгенерированного IL
+            if (Environment.GetCommandLineArgs().Contains("--emit-il"))
+            {
+                PrintGeneratedIL(generatedAssembly);
+            }
+            
+            // Опционально: сохранение сборки в файл
+            var saveAssemblyArgs = Environment.GetCommandLineArgs();
+            int saveIndex = Array.IndexOf(saveAssemblyArgs, "--save-assembly");
+            if (saveIndex >= 0 && saveIndex + 1 < saveAssemblyArgs.Length)
+            {
+                string outputPath = saveAssemblyArgs[saveIndex + 1];
+                SaveAssemblyToFile(codeGenerator, outputPath);
+            }
+            
+            // Опционально: выполнение сгенерированного кода
+            if (Environment.GetCommandLineArgs().Contains("--run"))
+            {
+                ExecuteGeneratedAssembly(generatedAssembly);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"**[ ERR ] Code generation failed: {ex.Message}");
+            if (Environment.GetCommandLineArgs().Contains("--debug"))
+            {
+                Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+            }
+            throw new CompilerException("Code generation failed", ex);
+        }
+    }
+
+    // ============================================================
+    // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ КОДА
+    // ============================================================
+    
+    private static void PrintGeneratedIL(Assembly assembly)
+    {
+        Console.WriteLine("\n**[ DEBUG ] Generated IL Instructions:");
+        Console.WriteLine("========================================");
+        
+        foreach (var type in assembly.GetTypes())
+        {
+            Console.WriteLine($"\nClass: {type.Name}");
+            
+            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            {
+                Console.WriteLine($"  Method: {method.Name}");
+                
+                try
+                {
+                    var methodBody = method.GetMethodBody();
+                    if (methodBody != null)
+                    {
+                        var il = methodBody.GetILAsByteArray();
+                        Console.WriteLine($"    IL Size: {il?.Length ?? 0} bytes");
+                        // Полная дизассемблировка IL требует дополнительной библиотеки
+                        // Например: ILSpy.Decompiler или System.Reflection.Metadata
+                    }
+                }
+                catch
+                {
+                    // Некоторые методы могут быть недоступны для получения тела
+                }
+            }
+        }
+        
+        Console.WriteLine("========================================\n");
+    }
+
+    private static void SaveAssemblyToFile(CodeGenerator codeGenerator, string outputPath)
+    {
+        Console.WriteLine($"**[ INFO ] Saving assembly to: {outputPath}");
+        
+        try
+        {
+            // ПРИМЕЧАНИЕ: В .NET Core/.NET 5+ прямое сохранение AssemblyBuilder недоступно
+            // Требуется использовать:
+            // - .NET 9+: PersistedAssemblyBuilder
+            // - Альтернатива: MetadataLoadContext или сторонние библиотеки
+            
+            codeGenerator.SaveToFile(outputPath);
+            Console.WriteLine($"**[ OK ] Assembly saved successfully!");
+        }
+        catch (NotImplementedException)
+        {
+            Console.WriteLine("**[ WARN ] Assembly saving not implemented yet.");
+            Console.WriteLine("**[ INFO ] Use .NET 9+ with PersistedAssemblyBuilder or MetadataLoadContext.");
+            Console.WriteLine("**[ INFO ] For now, assembly exists only in memory (use --run to execute).");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"**[ ERR ] Failed to save assembly: {ex.Message}");
+        }
+    }
+
+    private static void ExecuteGeneratedAssembly(Assembly assembly)
+    {
+        Console.WriteLine("\n**[ INFO ] Executing generated code...");
+        Console.WriteLine("========================================");
+        
+        try
+        {
+            // Ищем entry point для выполнения
+            // Стратегия: ищем первый класс с конструктором без параметров
+            
+            var types = assembly.GetTypes();
+            bool executed = false;
+            
+            foreach (var type in types)
+            {
+                // Пропускаем встроенные типы компилятора
+                if (type.Name.StartsWith("<") || type.IsAbstract || type.IsInterface)
+                    continue;
+                
+                var constructor = type.GetConstructor(Type.EmptyTypes);
+                if (constructor != null)
+                {
+                    Console.WriteLine($"**[ INFO ] Creating instance of class: {type.Name}");
+                    
+                    try
+                    {
+                        var instance = Activator.CreateInstance(type);
+                        Console.WriteLine($"**[ OK ] Instance created successfully!");
+                        
+                        // Опционально: вызов методов, если они есть
+                        // Например, можно искать метод main() или run()
+                        var mainMethod = type.GetMethod("main", BindingFlags.Public | BindingFlags.Instance);
+                        if (mainMethod != null)
+                        {
+                            Console.WriteLine($"**[ INFO ] Calling method: main()");
+                            mainMethod.Invoke(instance, null);
+                        }
+                        
+                        executed = true;
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
+                        if (Environment.GetCommandLineArgs().Contains("--debug"))
+                        {
+                            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+                        }
+                    }
+                }
+            }
+            
+            if (!executed)
+            {
+                Console.WriteLine("**[ WARN ] No executable entry point found.");
+                Console.WriteLine("**[ INFO ] Looking for a class with parameterless constructor...");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
+            if (Environment.GetCommandLineArgs().Contains("--debug"))
+            {
+                Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+            }
+        }
+        
+        Console.WriteLine("========================================\n");
+    }
+
+    // ============================================================
+    // СУЩЕСТВУЮЩИЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ)
+    // ============================================================
 
     private static void RegisterStandardClasses(ClassHierarchy hierarchy)
     {
@@ -232,10 +475,11 @@ public class Program
 
         Console.WriteLine($"\n**[ INFO ] Tokens calculated: {tokens.Count - 1} (except EOF)");
     }
-    private static void PrintTokensToFile(List<Token> tokens) {
-        // Write the tokens output to a file in the current directory
+    
+    private static void PrintTokensToFile(List<Token> tokens)
+    {
         string fileName = $"parsing_result{DateTime.Now:yyyyMMdd_HHmmss}.txt";
-        string filePath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), fileName);
+        string filePath = Path.Combine(Directory.GetCurrentDirectory(), fileName);
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("**[ INFO ] Tokens detected:\n");
@@ -251,7 +495,7 @@ public class Program
 
         sb.AppendLine($"\n**[ INFO ] Tokens calculated: {Math.Max(0, tokens.Count - 1)} (except EOF)");
 
-        System.IO.File.WriteAllText(filePath, sb.ToString());
+        File.WriteAllText(filePath, sb.ToString());
 
         Console.WriteLine($"**[ INFO ] Tokens written to: {filePath}");
     }

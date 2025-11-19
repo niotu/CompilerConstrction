@@ -18,7 +18,7 @@ dotnet build
 dotnet run --project src/OCompiler tests/<test_name> --tokens-only # add --tokens-to-file, to take tokens into file
 ```
 
-- Run parser 
+- Run compiler 
 
 ``` shell
 dotnet run --project src/OCompiler tests/<test_name> 
