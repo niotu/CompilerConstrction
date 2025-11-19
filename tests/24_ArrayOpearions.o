@@ -2,7 +2,6 @@ class ArrayOperations is
     method ProcessArray() : Integer is
         var arr : Array[Integer](Integer(5))
         var i : Integer(0)
-        var out : Integer(arr.get(10))
         
         while i.Less(arr.Length()) loop
             arr.set(i, i.Mult(Integer(2)))

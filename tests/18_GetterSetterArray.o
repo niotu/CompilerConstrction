@@ -1,0 +1,14 @@
+
+
+
+
+
+
+x := Integer(10)        // x : Integer
+y := x.Plus(5)          // y : Integer
+z := x.toReal()         // z : Real
+result := z.Plus(x)     // result : Real (смешанная операция)
+
+
+
+

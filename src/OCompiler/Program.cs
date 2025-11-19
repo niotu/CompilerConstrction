@@ -457,7 +457,6 @@ public class Program
             hierarchy.AddClass(classDecl);
         }
         
-        Console.WriteLine("**[ INFO ] Standard class hierarchy initialized");
     }
 
     private static void PrintTokens(List<Token> tokens)

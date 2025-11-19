@@ -1,5 +1,10 @@
 class Hello is
     this() is
-        // empty constructor, program ends immediately
+        var a : Integer()
+        if Integer(1).Less(2) then
+            a := 1
+        else
+            a:= 2
+        end
     end
 end

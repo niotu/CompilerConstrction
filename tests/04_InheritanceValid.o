@@ -4,6 +4,7 @@ class Animal is
     end
     method Walk() : Integer is
         return 101010
+        var a : Real()
     end
 end
 
@@ -23,6 +24,6 @@ class Test is
         var arr : Array[Integer](10)
         arr.get(11)
 
-        var s : Integer(d.Speak()) // 22222
+        var s : Integer(d.Walk()) // 101010
     end
 end
