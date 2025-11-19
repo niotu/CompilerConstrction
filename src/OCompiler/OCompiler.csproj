@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
+
     <RootNamespace>OCompiler</RootNamespace>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -14,16 +15,11 @@
     <!-- Существующие пакеты для парсера -->
     <PackageReference Include="YaccLexTools.Gppg" Version="1.5.3.1" />
     <!-- НОВОЕ: Пакеты для генерации кода через Reflection.Emit -->
-    <PackageReference Include="System.Reflection.Emit" Version="4.7.0" />
+    <PackageReference Include="System.Reflection.Emit" Version="4.7.0" /> 
+    <PackageReference Include="System.Reflection.Metadata" Version="8.0.0" />
     <PackageReference Include="System.Reflection.Emit.ILGeneration" Version="4.7.0" />
     <PackageReference Include="System.Reflection.Emit.Lightweight" Version="4.7.0" />
     
-    <!-- НОВОЕ: Для работы с Metadata (опционально, для расширенной отладки) -->
-    <PackageReference Include="System.Reflection.Metadata" Version="8.0.0" />
-    
-    <!-- НОВОЕ: Для потенциального сохранения сборок в файлы (.NET 9+) -->
-    <!-- Раскомментируйте, если используете .NET 9 и хотите сохранять .dll/.exe -->
-    <!-- <PackageReference Include="System.Reflection.Emit.PersistedAssemblyBuilder" Version="9.0.0" /> -->
   </ItemGroup>
 
   <!-- НОВОЕ: Указываем, что Grammar.y должен быть обработан gppg -->

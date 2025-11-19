@@ -2,12 +2,12 @@ using OCompiler.Lexer;
 using OCompiler.Utils;
 using OCompiler.Parser;
 using OCompiler.Semantic;
-using OCompiler.CodeGen; // НОВОЕ: Импорт модуля генерации кода
 using System.Reflection;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;  // НОВОЕ: Для работы со сборками
+using System.Linq;
+using OCompiler.CodeGeneration;  // НОВОЕ: Для работы со сборками
 
 namespace OCompiler;
 
@@ -278,6 +278,7 @@ public class Program
             if (saveIndex >= 0 && saveIndex + 1 < saveAssemblyArgs.Length)
             {
                 string outputPath = saveAssemblyArgs[saveIndex + 1];
+                Console.WriteLine($"**[ INFO ] Saving generated assembly to file: {outputPath}");
                 SaveAssemblyToFile(codeGenerator, outputPath);
             }
             
