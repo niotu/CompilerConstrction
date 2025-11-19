@@ -6,7 +6,8 @@ class ListOperations is
         list := list.append(Integer(30))
         
         var first : Integer(list.head())
-        var rest : List[Integer](list.tail())
+        var rest : List[Integer]()
+        rest := list.tail()
         var second : Integer(rest.head())
         
         return first.Plus(second)

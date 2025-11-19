@@ -26,37 +26,41 @@ namespace OCompiler.Semantic
 
         public void Check(ProgramNode program)
         {
+            // 0. Проверка иерархии классов (ДОЛЖНА БЫТЬ ПЕРВОЙ!)
+            CheckClassHierarchy(program);
+            
+            // Если есть ошибки, прерываем проверку
+            if (_errors.Count > 0)
+                return;
+            
             // 1. Проверка корректности использования ключевых слов
             CheckKeywordUsage(program);
             
             // 2. Проверка объявлений перед использованием
             CheckDeclarationsBeforeUsage(program);
             
-            // 3. Проверка иерархии классов
-            CheckClassHierarchy(program);
-            
-            // 4. Проверка переопределения методов
+            // 3. Проверка переопределения методов
             CheckMethodOverriding(program);
             
-            // 5. Проверка типов
+            // 4. Проверка типов
             CheckTypeCompatibility(program);
             
-            // 6. Проверка вызовов конструкторов
+            // 5. Проверка вызовов конструкторов
             CheckConstructorCalls(program);
             
-            // 7. Проверка forward declarations
+            // 6. Проверка forward declarations
             CheckForwardDeclarations(program);
             
-            // 8. Проверка использования this
+            // 7. Проверка использования this
             CheckThisUsage(program);
             
-            // 9. Проверка возвращаемых значений
+            // 8. Проверка возвращаемых значений
             CheckReturnStatements(program);
             
-            // 10. Проверка границ массивов
+            // 9. Проверка границ массивов
             CheckArrayBounds(program);
             
-            // 11. Дополнительные проверки
+            // 10. Дополнительные проверки
             CheckAdditionalSemantics(program);
         }
 
@@ -208,7 +212,18 @@ namespace OCompiler.Semantic
 
         private List<VariableDeclaration> GetClassVariables(ClassDeclaration classDecl)
         {
+            return GetClassVariablesHelper(classDecl, new HashSet<string>());
+        }
+
+        private List<VariableDeclaration> GetClassVariablesHelper(ClassDeclaration classDecl, HashSet<string> visited)
+        {
             var variables = new List<VariableDeclaration>();
+            
+            // Защита от циклических зависимостей
+            if (visited.Contains(classDecl.Name))
+                return variables;
+            
+            visited.Add(classDecl.Name);
             
             // Сначала добавляем переменные из базового класса
             if (!string.IsNullOrEmpty(classDecl.Extension))
@@ -216,7 +231,7 @@ namespace OCompiler.Semantic
                 var baseClass = _hierarchy.GetClass(classDecl.Extension);
                 if (baseClass != null)
                 {
-                    variables.AddRange(GetClassVariables(baseClass));
+                    variables.AddRange(GetClassVariablesHelper(baseClass, visited));
                 }
             }
             
@@ -273,12 +288,10 @@ namespace OCompiler.Semantic
                 }
                 
                 _symbolTable.ExitScope();
-                Console.WriteLine($"DEBUG: ===== Finished class: {_currentClass} =====");
             }
         }
         private void PrintCurrentSymbols()
         {
-            Console.WriteLine("DEBUG: === Current Symbols ===");
             // Временно добавим принудительный вывод для тестирования
             var testSymbols = new[] { "arr", "a", "d", "s" };
             foreach (var name in testSymbols)
@@ -286,18 +299,13 @@ namespace OCompiler.Semantic
                 var symbol = _symbolTable.Lookup(name);
                 Console.WriteLine($"  {name}: {symbol?.Type}[{symbol?.GenericParameter}]");
             }
-            Console.WriteLine("DEBUG: =======================");
         }
         private void CheckClassVariableDeclaration(VariableDeclaration varDecl)
         {
-            Console.WriteLine($"DEBUG: Processing class variable: {varDecl.Identifier}");
-            
             // Анализируем инициализатор и устанавливаем тип
             if (varDecl.Expression is ConstructorInvocation constr)
             {
                 string fullType = BuildFullTypeName(constr.ClassName, constr.GenericParameter);
-                Console.WriteLine($"DEBUG: Class variable '{varDecl.Identifier}' initialized with: {fullType}");
-                
                 var symbol = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
                 symbol.Initializer = constr;
                 _symbolTable.AddSymbol(varDecl.Identifier, symbol);
@@ -335,23 +343,20 @@ namespace OCompiler.Semantic
                         if (constr.ClassName == "Array")
                         {
                             sym.Initializer = constr; // Сохраняем конструктор массива
-                            Console.WriteLine($"DEBUG: Array variable '{varDecl.Identifier}' - constructor saved. Arguments: {constr.Arguments.Count}");
                             
                             if (constr.Arguments.Count > 0)
                             {
                                 var firstArg = constr.Arguments[0];
                                 if (firstArg is FunctionalCall fc)
                                 {
-                                    Console.WriteLine($"DEBUG: First argument is FunctionalCall: {fc.Function}");
                                     if (fc.Arguments.Count > 0 && fc.Arguments[0] is IntegerLiteral il)
                                     {
-                                        Console.WriteLine($"DEBUG: Size value: {il.Value}");
+                                        // size value available in il.Value
                                     }
                                 }
                             }
                         }
                         _symbolTable.AddSymbol(varDecl.Identifier, sym);
-                        Console.WriteLine($"DEBUG: Symbol added to table: {varDecl.Identifier} = {sym.Type}");
                     }
                     else
                     {
@@ -605,9 +610,9 @@ namespace OCompiler.Semantic
             foreach (var classDecl in program.Classes)
             {
                 // Проверка циклического наследования
-                if (HasInheritanceCycle(classDecl, program))
+                if (_hierarchy.HasCyclicDependency(classDecl, out var cycleStart))
                 {
-                    _errors.Add($"Circular inheritance detected for class '{classDecl.Name}'");
+                    _errors.Add($"Circular inheritance detected: class '{cycleStart}' is involved in a cycle");
                 }
                 
                 // Проверка что базовый класс существует
@@ -880,83 +885,68 @@ namespace OCompiler.Semantic
                 // Специальная проверка для методов массива
                 if (targetType.StartsWith("Array["))
                 {
-                    Console.WriteLine($"DEBUG: Array operation: {methodName} on {targetType}");
                     if (methodName == "get" || methodName == "set")
                     {
                         // Получаем размер массива, если он был задан при создании
                         if (target is IdentifierExpression arrayIdent)
                         {
-                            Console.WriteLine($"DEBUG: Looking up array symbol: {arrayIdent.Name}");
                             var arraySymbol = _symbolTable.Lookup(arrayIdent.Name);
-                            Console.WriteLine($"DEBUG: Found array symbol: {arraySymbol?.Type}, has initializer: {arraySymbol?.Initializer != null}");
-                            
+
                             if (arraySymbol?.Initializer is ConstructorInvocation arrayConstructor)
                             {
-                                Console.WriteLine($"DEBUG: Array constructor has {arrayConstructor.Arguments.Count} arguments");
                                 if (arrayConstructor.Arguments.Count > 0)
                                 {
                                     int? sizeValue = null;
                                     var sizeArg = arrayConstructor.Arguments[0];
-                                    Console.WriteLine($"DEBUG: Size argument type: {sizeArg.GetType().Name}");
 
                                     // Проверяем размер массива
                                     if (sizeArg is FunctionalCall sizeCall)
                                     {
-                                        Console.WriteLine($"DEBUG: Size is FunctionalCall: {sizeCall.Function}");
                                         if (sizeCall.Function is IdentifierExpression sizeFunc &&
                                             sizeFunc.Name == "Integer" &&
                                             sizeCall.Arguments.Count == 1 &&
                                             sizeCall.Arguments[0] is IntegerLiteral sizeLiteral)
                                         {
                                             sizeValue = sizeLiteral.Value;
-                                            Console.WriteLine($"DEBUG: Found array size: {sizeValue}");
                                         }
                                     }
                                     else if (sizeArg is IntegerLiteral directSize)
                                     {
                                         sizeValue = directSize.Value;
-                                        Console.WriteLine($"DEBUG: Found direct size: {sizeValue}");
                                     }
 
                                     if (sizeValue.HasValue && funcCall.Arguments.Count > 0)
                                     {
                                         int? indexValue = null;
                                         var indexArg = funcCall.Arguments[0];
-                                        Console.WriteLine($"DEBUG: Index argument type: {indexArg.GetType().Name}");
 
                                         // Проверяем индекс
                                         if (indexArg is IntegerLiteral directIndex)
                                         {
                                             indexValue = directIndex.Value;
-                                            Console.WriteLine($"DEBUG: Found direct index: {indexValue}");
                                         }
                                         else if (indexArg is FunctionalCall indexCall)
                                         {
-                                            Console.WriteLine($"DEBUG: Index is FunctionalCall: {indexCall.Function}");
                                             if (indexCall.Function is IdentifierExpression indexFunc &&
                                                 indexFunc.Name == "Integer" &&
                                                 indexCall.Arguments.Count == 1 &&
                                                 indexCall.Arguments[0] is IntegerLiteral indexLiteral)
                                             {
                                                 indexValue = indexLiteral.Value;
-                                                Console.WriteLine($"DEBUG: Found index value: {indexValue}");
                                             }
                                         }
 
                                         if (indexValue.HasValue)
                                         {
-                                            Console.WriteLine($"DEBUG: Checking array bounds: index {indexValue.Value} vs size {sizeValue.Value}");
                                             if (indexValue.Value >= sizeValue.Value || indexValue.Value < 0)
                                             {
                                                 var error = $"Array index out of bounds: index {indexValue.Value} should be in range [0,{sizeValue.Value-1}]";
-                                                Console.WriteLine($"DEBUG: Adding error: {error}");
                                                 _errors.Add(error);
                                             }
                                         }
                                         else
                                         {
                                             // Если индекс не удалось вычислить статически, добавляем warning
-                                            Console.WriteLine($"DEBUG: Could not statically determine index value");
                                             _warnings.Add("Could not statically verify array index bounds");
                                         }
                                     }
@@ -996,49 +986,71 @@ namespace OCompiler.Semantic
                     }
                 }
 
-                // Проверяем аргументы для каждой перегрузки метода
+                // Проверяем аргументы для каждой перегрузки метода.
+                // Ищем хоть одну перегрузку с совпадающей арностью и совместимыми типами.
                 bool foundMatch = false;
                 foreach (var method in methods)
                 {
-                    if (method.Parameters.Count == funcCall.Arguments.Count)
+                    if (method.Parameters.Count != funcCall.Arguments.Count)
+                        continue;
+
+                    // Проверяем типы аргументов для этой перегрузки
+                    bool allParamsOk = true;
+                    for (int i = 0; i < method.Parameters.Count; i++)
                     {
-                        foundMatch = true;
-                        
-                        // Проверяем типы аргументов
-                        for (int i = 0; i < method.Parameters.Count; i++)
+                        var argType = InferExpressionType(funcCall.Arguments[i]);
+                        var paramType = method.Parameters[i].Type;
+
+                        // Специализация T для обобщённых контейнеров
+                        if (paramType == "T")
                         {
-                            var argType = InferExpressionType(funcCall.Arguments[i]);
-                            var paramType = method.Parameters[i].Type;
-                            // Специализация T для обобщённых контейнеров
-                            if (paramType == "T")
+                            if (targetType.StartsWith("Array["))
                             {
-                                if (targetType.StartsWith("Array["))
-                                {
-                                    paramType = ExtractArrayElementType(targetType);
-                                }
-                                else if (targetType.StartsWith("List["))
-                                {
-                                    // List[Integer] -> Integer
-                                    paramType = targetType.Substring(5, targetType.Length - 6);
-                                }
-                                else
-                                {
-                                    paramType = "Unknown";
-                                }
+                                paramType = ExtractArrayElementType(targetType);
                             }
-                            
-                            if (!AreTypesCompatible(argType, paramType) && argType != "Unknown")
+                            else if (targetType.StartsWith("List["))
                             {
-                                _errors.Add($"Argument {i+1} type mismatch in '{targetType}.{methodName}'. Expected: {paramType}, Got: {argType}");
+                                paramType = targetType.Substring(5, targetType.Length - 6);
+                            }
+                            else
+                            {
+                                paramType = "Unknown";
                             }
                         }
+
+                        if (!AreTypesCompatible(argType, paramType) && argType != "Unknown")
+                        {
+                            allParamsOk = false;
+                            break;
+                        }
+                    }
+
+                    if (allParamsOk)
+                    {
+                        foundMatch = true;
                         break;
                     }
                 }
-                
+
                 if (!foundMatch)
                 {
-                    _errors.Add($"No matching overload found for '{targetType}.{methodName}' with {funcCall.Arguments.Count} arguments");
+                    // Формируем контекст (класс/метод) для более информативного сообщения
+                    var context = string.Empty;
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(_currentClass))
+                        {
+                            context = _currentClass;
+                            if (!string.IsNullOrEmpty(_currentMethod))
+                                context += $".{_currentMethod}";
+                        }
+                    }
+                    catch { }
+
+                    // Собираем список доступных сигнатур для удобства
+                    var sigs = methods.Select(m => string.Join(",", m.Parameters.Select(p => p.Type))).ToList();
+                    var sigList = sigs.Count > 0 ? string.Join(" | ", sigs) : "<no overloads>";
+                    _errors.Add($"No matching overload found for '{targetType}.{methodName}' with {funcCall.Arguments.Count} arguments{(context==string.Empty?"":" in "+context)}. Candidates: {sigList}");
                 }
             }
         }
@@ -1763,9 +1775,8 @@ namespace OCompiler.Semantic
 
         private MethodDeclaration FindMethod(string methodName, string className)
         {
-            var classDecl = _hierarchy.GetClass(className);
-            return classDecl?.Members.OfType<MethodDeclaration>()
-                .FirstOrDefault(m => m.Header.Name == methodName);
+            // Ищет метод в классе и его базовых классах
+            return _hierarchy.FindMethodInHierarchy(methodName, className);
         }
 
         private string GetVariableType(string variableName)
@@ -1927,23 +1938,6 @@ namespace OCompiler.Semantic
             }
             
             _symbolTable.ExitScope();
-        }
-
-        private bool HasInheritanceCycle(ClassDeclaration classDecl, ProgramNode program)
-        {
-            var visited = new HashSet<string>();
-            var current = classDecl;
-            
-            while (current != null && !string.IsNullOrEmpty(current.Extension))
-            {
-                if (visited.Contains(current.Name))
-                    return true;
-                    
-                visited.Add(current.Name);
-                current = program.Classes.FirstOrDefault(c => c.Name == current.Extension);
-            }
-            
-            return false;
         }
 
         private bool AreParametersCompatible(List<ParameterDeclaration> params1, List<ParameterDeclaration> params2)

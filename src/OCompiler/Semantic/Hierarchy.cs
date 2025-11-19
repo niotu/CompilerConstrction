@@ -53,7 +53,7 @@ public class ClassHierarchy
         return IsSubclassOf(fromType, toType);
     }
     
-    private bool IsSubclassOf(string derived, string baseClass)
+    public bool IsSubclassOf(string derived, string baseClass)
     {
         var current = _classes.GetValueOrDefault(derived);
         while (current != null)
@@ -64,12 +64,69 @@ public class ClassHierarchy
         return false;
     }
 
+    public MethodDeclaration? FindMethodInHierarchy(string methodName, string className)
+    {
+        var current = _classes.GetValueOrDefault(className);
+        while (current != null)
+        {
+            var method = current.Members
+                .OfType<MethodDeclaration>()
+                .FirstOrDefault(m => m.Header.Name == methodName);
+            
+            if (method != null)
+                return method;
+            
+            // Ищем в базовом классе
+            current = string.IsNullOrEmpty(current.Extension) ? null : GetBaseClass(current);
+        }
+        return null;
+    }
+
+    public bool HasCyclicDependency(ClassDeclaration classDecl, out string? cycle)
+    {
+        cycle = null;
+        var visited = new HashSet<string>();
+        var recursionStack = new HashSet<string>();
+        
+        return HasCyclicDependencyHelper(classDecl.Name, visited, recursionStack, out cycle);
+    }
+
+    private bool HasCyclicDependencyHelper(string className, HashSet<string> visited, 
+                                          HashSet<string> recursionStack, out string? cycle)
+    {
+        cycle = null;
+        
+        if (recursionStack.Contains(className))
+        {
+            cycle = className;
+            return true;
+        }
+        
+        if (visited.Contains(className))
+            return false;
+        
+        visited.Add(className);
+        recursionStack.Add(className);
+        
+        var classDecl = _classes.GetValueOrDefault(className);
+        if (classDecl != null && !string.IsNullOrEmpty(classDecl.Extension))
+        {
+            if (HasCyclicDependencyHelper(classDecl.Extension, visited, recursionStack, out cycle))
+            {
+                return true;
+            }
+        }
+        
+        recursionStack.Remove(className);
+        return false;
+    }
+
     public IEnumerable<string> GetAllClasses()
     {
         return _classes.Keys.Concat(_standardClasses);
     }
 
-    // НОВЫЕ МЕТОДЫ для работы с встроенными классами:
+
     
     public bool IsBuiltInClass(string? className)
     {
