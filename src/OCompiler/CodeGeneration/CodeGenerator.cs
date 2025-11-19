@@ -5,19 +5,13 @@ using System.Reflection;
 using System.Reflection.Emit;
 using OCompiler.Parser;
 using OCompiler.Semantic;
-using System.IO;
-
-
-#if NET9_0_OR_GREATER
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
-#endif
 
 namespace OCompiler.CodeGeneration
 {
     /// <summary>
     /// Главный класс генератора кода для языка O.
     /// Генерирует .NET сборки из AST с использованием System.Reflection.Emit.
+    /// Использует BuiltinTypes для реализации встроенных методов.
     /// </summary>
     public class CodeGenerator
     {
@@ -27,6 +21,7 @@ namespace OCompiler.CodeGeneration
         private readonly MethodGenerator _methodGenerator;
         private readonly Dictionary<string, TypeBuilder> _typeBuilders;
         private readonly Dictionary<string, Type> _completedTypes;
+        private readonly Dictionary<string, ConstructorBuilder> _defaultConstructors; // НОВОЕ
         private readonly ClassHierarchy _hierarchy;
         private readonly string _assemblyName;
 
@@ -37,26 +32,20 @@ namespace OCompiler.CodeGeneration
             _typeBuilders = new Dictionary<string, TypeBuilder>();
             _completedTypes = new Dictionary<string, Type>();
 
-            // Создаём динамическую сборку
             var assemblyNameObj = new AssemblyName(assemblyName);
             
-            #if NET9_0_OR_GREATER
-            // .NET 9+: Используем PersistedAssemblyBuilder для сохранения в файл
-            _assemblyBuilder = new PersistedAssemblyBuilder(
-                assemblyNameObj,
-                typeof(object).Assembly);
-            #else
-            // .NET 8 и ниже: Только выполнение в памяти
+            // Используем AssemblyBuilderAccess.Run для возможности выполнения
+            // Это даёт нам настоящие runtime типы, а не TypeBuilder
             _assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(
                 assemblyNameObj,
-                AssemblyBuilderAccess.RunAndCollect);
-            #endif
+                AssemblyBuilderAccess.Run);
 
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(assemblyName);
             _typeMapper = new TypeMapper(_moduleBuilder, _hierarchy);
             _methodGenerator = new MethodGenerator(_typeMapper, _hierarchy);
 
             Console.WriteLine($"**[ INFO ] Code generator initialized for assembly: {assemblyName}");
+            Console.WriteLine($"**[ INFO ] Using BuiltinTypes for runtime support");
         }
 
         /// <summary>
@@ -72,7 +61,7 @@ namespace OCompiler.CodeGeneration
                 DeclareType(classDecl);
             }
 
-            Console.WriteLine($"**[ INFO ] Declared {_typeBuilders.Count} types");
+            Console.WriteLine($"**[ INFO ] Declared {_typeBuilders.Count} user types");
             Console.WriteLine("**[ INFO ] Phase 2: Generating type members...");
 
             // Фаза 2: Генерация членов классов (поля, конструкторы, методы)
@@ -88,8 +77,30 @@ namespace OCompiler.CodeGeneration
             {
                 try
                 {
-                    var completedType = kvp.Value.CreateType();
-                    _completedTypes[kvp.Key] = completedType!;
+                    // CreateType() возвращает RuntimeType в AssemblyBuilder с Access.Run
+                    Type completedType = kvp.Value.CreateType()!;
+                    
+                    if (completedType == null)
+                    {
+                        throw new InvalidOperationException($"CreateType() returned null for '{kvp.Key}'");
+                    }
+                    
+                    // Проверяем, что получили runtime тип
+                    if (completedType.GetType().Name.Contains("Builder"))
+                    {
+                        Console.WriteLine($"**[ WARN ] Type '{kvp.Key}' is still a builder, attempting recovery...");
+                        
+                        // Пытаемся загрузить через Assembly.GetType()
+                        var runtimeType = _assemblyBuilder.GetType(kvp.Key);
+                        if (runtimeType != null && !runtimeType.GetType().Name.Contains("Builder"))
+                        {
+                            completedType = runtimeType;
+                            Console.WriteLine($"**[ INFO ] Successfully recovered runtime type for '{kvp.Key}'");
+                        }
+                    }
+                    
+                    _completedTypes[kvp.Key] = completedType;
+                    
                     Console.WriteLine($"**[ DEBUG ]   Finalized type: {kvp.Key}");
                 }
                 catch (Exception ex)
@@ -100,6 +111,7 @@ namespace OCompiler.CodeGeneration
             }
 
             Console.WriteLine($"**[ OK ] Successfully generated {_completedTypes.Count} types");
+            Console.WriteLine($"**[ INFO ] Built-in types provided by BuiltinTypes runtime");
 
             return _assemblyBuilder;
         }
@@ -109,10 +121,10 @@ namespace OCompiler.CodeGeneration
         /// </summary>
         private void DeclareType(ClassDeclaration classDecl)
         {
-            // Пропускаем встроенные типы - они уже существуют в .NET
+            // Пропускаем встроенные типы - они реализованы в BuiltinTypes
             if (_typeMapper.IsBuiltInType(classDecl.Name))
             {
-                Console.WriteLine($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name}");
+                Console.WriteLine($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name} (provided by BuiltinTypes)");
                 return;
             }
 
@@ -192,7 +204,8 @@ namespace OCompiler.CodeGeneration
             // Если нет явного конструктора, создаём конструктор по умолчанию
             if (!hasConstructor)
             {
-                GenerateDefaultConstructor(typeBuilder);
+                var defaultCtor = GenerateDefaultConstructor(typeBuilder);
+                _defaultConstructors[classDecl.Name] = defaultCtor; // НОВОЕ: Сохраняем
             }
 
             // Генерация методов
@@ -201,6 +214,7 @@ namespace OCompiler.CodeGeneration
                 _methodGenerator.GenerateMethod(typeBuilder, member, fields);
             }
         }
+
 
         /// <summary>
         /// Генерирует поле класса.
@@ -222,7 +236,7 @@ namespace OCompiler.CodeGeneration
         /// <summary>
         /// Генерирует конструктор по умолчанию.
         /// </summary>
-        private void GenerateDefaultConstructor(TypeBuilder typeBuilder)
+        private ConstructorBuilder GenerateDefaultConstructor(TypeBuilder typeBuilder)
         {
             var ctorBuilder = typeBuilder.DefineConstructor(
                 MethodAttributes.Public,
@@ -233,56 +247,68 @@ namespace OCompiler.CodeGeneration
 
             // Вызов конструктора базового класса
             il.Emit(OpCodes.Ldarg_0); // this
-            var baseConstructor = typeBuilder.BaseType!.GetConstructor(Type.EmptyTypes);
-            il.Emit(OpCodes.Call, baseConstructor!);
 
+            ConstructorInfo? baseConstructor = null;
+
+            // ИСПРАВЛЕНИЕ: Получаем конструктор базового класса
+            if (typeBuilder.BaseType == typeof(object))
+            {
+                // Базовый класс - object, используем его конструктор
+                baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
+            }
+            else if (typeBuilder.BaseType is TypeBuilder baseTypeBuilder)
+            {
+                // Базовый класс - ещё не завершённый TypeBuilder
+                // Ищем его сохранённый конструктор
+                var baseTypeName = baseTypeBuilder.Name;
+                
+                if (_defaultConstructors.TryGetValue(baseTypeName, out var savedBaseCtor))
+                {
+                    baseConstructor = savedBaseCtor;
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Default constructor for base type '{baseTypeName}' not found. " +
+                        $"Ensure base classes are generated before derived classes.");
+                }
+            }
+            else
+            {
+                // Базовый класс - обычный Type
+                baseConstructor = typeBuilder.BaseType.GetConstructor(Type.EmptyTypes);
+            }
+
+            if (baseConstructor == null)
+            {
+                throw new InvalidOperationException(
+                    $"Parameterless constructor not found for base type '{typeBuilder.BaseType?.Name}'");
+            }
+
+            il.Emit(OpCodes.Call, baseConstructor);
             il.Emit(OpCodes.Ret);
 
             Console.WriteLine($"**[ DEBUG ]   Generated default constructor");
+
+            return ctorBuilder;
         }
+
 
         /// <summary>
         /// Сохраняет сборку в файл (.exe или .dll).
+        /// ПРИМЕЧАНИЕ: В режиме AssemblyBuilderAccess.Run сохранение в файл невозможно.
         /// </summary>
         public void SaveToFile(string outputPath)
         {
-            #if NET9_0_OR_GREATER
-            Console.WriteLine($"**[ INFO ] Saving assembly to: {outputPath}");
-            
-            try
-            {
-                // В .NET 9 PersistedAssemblyBuilder имеет метод Save
-                var persistedBuilder = (PersistedAssemblyBuilder)_assemblyBuilder;
-                
-                using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write);
-                
-                // Простой метод сохранения
-                persistedBuilder.Save(stream);
-
-                Console.WriteLine($"**[ OK ] Assembly saved successfully: {outputPath}");
-                Console.WriteLine($"**[ INFO ] File size: {new FileInfo(outputPath).Length} bytes");
-            }
-            catch (NotSupportedException ex)
-            {
-                Console.WriteLine($"**[ WARN ] {ex.Message}");
-                Console.WriteLine($"**[ INFO ] PersistedAssemblyBuilder.Save() may not be fully implemented yet.");
-                Console.WriteLine($"**[ INFO ] Try using --run flag to execute in-memory instead.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"**[ ERR ] Failed to save assembly: {ex.Message}");
-                if (Environment.GetCommandLineArgs().Contains("--debug"))
-                {
-                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
-                }
-                throw;
-            }
-            #else
             throw new NotSupportedException(
-                "Saving assemblies to file requires .NET 9 or higher. " +
-                "Current runtime: .NET " + Environment.Version + ". " +
-                "Use --run flag to execute in-memory, or upgrade to .NET 9.");
-            #endif
+                "Saving assemblies to file is not supported in Run mode.\n" +
+                "AssemblyBuilderAccess.Run allows execution but not persistence.\n" +
+                "To save assemblies:\n" +
+                "  1. Use .NET 9+ with PersistedAssemblyBuilder (currently in preview)\n" +
+                "  2. Or use Roslyn (Microsoft.CodeAnalysis.CSharp) to generate C# code\n" +
+                "  3. Or use MetadataLoadContext for low-level PE file generation\n" +
+                "\n" +
+                "Current mode supports --run flag for in-memory execution.");
         }
 
         /// <summary>
@@ -299,6 +325,118 @@ namespace OCompiler.CodeGeneration
         public IReadOnlyDictionary<string, Type> GetAllTypes()
         {
             return _completedTypes;
+        }
+
+        /// <summary>
+        /// Проверяет корректность всех сгенерированных типов.
+        /// Используется для отладки.
+        /// </summary>
+        public void ValidateTypes()
+        {
+            Console.WriteLine("\n**[ DEBUG ] ========== TYPE VALIDATION ==========");
+            
+            foreach (var kvp in _completedTypes)
+            {
+                var type = kvp.Value;
+                var typeName = kvp.Key;
+                
+                Console.WriteLine($"**[ DEBUG ] Type: {typeName}");
+                Console.WriteLine($"**[ DEBUG ]   - Full name: {type.FullName}");
+                Console.WriteLine($"**[ DEBUG ]   - Type class: {type.GetType().Name}");
+                // Console.WriteLine($"**[ DEBUG ]   - Is runtime type: {type is RuntimeType}");
+                Console.WriteLine($"**[ DEBUG ]   - Assembly: {type.Assembly.GetName().Name}");
+                Console.WriteLine($"**[ DEBUG ]   - Base type: {type.BaseType?.Name ?? "none"}");
+                
+                // Проверяем конструкторы
+                var ctors = type.GetConstructors(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                
+                Console.WriteLine($"**[ DEBUG ]   - Constructors: {ctors.Length}");
+                foreach (var ctor in ctors)
+                {
+                    var parameters = ctor.GetParameters();
+                    var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
+                    Console.WriteLine($"**[ DEBUG ]     - {ctor.Name}({paramStr})");
+                }
+                
+                // Проверяем методы
+                var methods = type.GetMethods(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                
+                if (methods.Length > 0)
+                {
+                    Console.WriteLine($"**[ DEBUG ]   - Methods: {methods.Length}");
+                    foreach (var method in methods)
+                    {
+                        var parameters = method.GetParameters();
+                        var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
+                        Console.WriteLine($"**[ DEBUG ]     - {method.ReturnType.Name} {method.Name}({paramStr})");
+                    }
+                }
+                
+                // Проверяем поля
+                var fields = type.GetFields(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                
+                if (fields.Length > 0)
+                {
+                    Console.WriteLine($"**[ DEBUG ]   - Fields: {fields.Length}");
+                    foreach (var field in fields)
+                    {
+                        Console.WriteLine($"**[ DEBUG ]     - {field.FieldType.Name} {field.Name}");
+                    }
+                }
+                
+                Console.WriteLine();
+            }
+            
+            Console.WriteLine("**[ DEBUG ] ========== BUILTIN TYPES ==========");
+            Console.WriteLine("**[ DEBUG ] The following types are provided by BuiltinTypes runtime:");
+            Console.WriteLine("**[ DEBUG ]   - Integer  → BuiltinTypes.OInteger");
+            Console.WriteLine("**[ DEBUG ]   - Real     → BuiltinTypes.OReal");
+            Console.WriteLine("**[ DEBUG ]   - Boolean  → BuiltinTypes.OBoolean");
+            Console.WriteLine("**[ DEBUG ]   - Array[T] → BuiltinTypes.OArray");
+            Console.WriteLine("**[ DEBUG ]   - List[T]  → BuiltinTypes.OList");
+            Console.WriteLine("**[ DEBUG ] =======================================\n");
+        }
+
+        /// <summary>
+        /// Получает информацию о сборке для диагностики.
+        /// </summary>
+        public AssemblyInfo GetAssemblyInfo()
+        {
+            return new AssemblyInfo
+            {
+                Name = _assemblyName,
+                TypeCount = _completedTypes.Count,
+                BuiltInTypesUsed = true,
+                IsExecutable = true,
+                IsPersistable = false,
+                RuntimeMode = "AssemblyBuilderAccess.Run"
+            };
+        }
+    }
+
+    /// <summary>
+    /// Информация о сгенерированной сборке.
+    /// </summary>
+    public class AssemblyInfo
+    {
+        public string Name { get; set; } = "";
+        public int TypeCount { get; set; }
+        public bool BuiltInTypesUsed { get; set; }
+        public bool IsExecutable { get; set; }
+        public bool IsPersistable { get; set; }
+        public string RuntimeMode { get; set; } = "";
+
+        public override string ToString()
+        {
+            return $"Assembly: {Name}\n" +
+                   $"  Types: {TypeCount}\n" +
+                   $"  Built-in types: {(BuiltInTypesUsed ? "Yes (BuiltinTypes)" : "No")}\n" +
+                   $"  Executable: {(IsExecutable ? "Yes (--run)" : "No")}\n" +
+                   $"  Persistable: {(IsPersistable ? "Yes (can save to file)" : "No (memory only)")}\n" +
+                   $"  Mode: {RuntimeMode}";
         }
     }
 }

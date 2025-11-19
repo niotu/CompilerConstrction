@@ -7,7 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using OCompiler.CodeGeneration;  // НОВОЕ: Для работы со сборками
+using OCompiler.CodeGeneration;
+using System.Reflection.Emit;  // НОВОЕ: Для работы со сборками
 
 namespace OCompiler;
 
@@ -250,54 +251,144 @@ public class Program
     // НОВАЯ ФУНКЦИЯ: ГЕНЕРАЦИЯ КОДА
     // ============================================================
     private static void GenerateCode(ProgramNode ast, ClassHierarchy hierarchy, string sourceFileName)
+{
+    Console.WriteLine("**[ INFO ] Starting code generation...");
+    
+    try
     {
-        Console.WriteLine("**[ INFO ] Starting code generation...");
+        // Получаем имя для сборки из имени файла
+        string assemblyName = Path.GetFileNameWithoutExtension(sourceFileName);
         
-        try
+        // Создаем генератор кода
+        var codeGenerator = new CodeGenerator(assemblyName, hierarchy);
+        // Генерируем сборку
+        Assembly generatedAssembly = codeGenerator.Generate(ast);
+
+        // НОВОЕ: Проверка корректности типов
+        if (Environment.GetCommandLineArgs().Contains("--debug"))
         {
-            // Получаем имя для сборки из имени файла
-            string assemblyName = Path.GetFileNameWithoutExtension(sourceFileName);
-            
-            // Создаем генератор кода
-            var codeGenerator = new CodeGenerator(assemblyName, hierarchy);
-            
-            // Генерируем сборку
-            Assembly generatedAssembly = codeGenerator.Generate(ast);
-            
-            Console.WriteLine("**[ OK ] Code generation completed successfully!");
-            
-            // Опционально: вывод сгенерированного IL
-            if (Environment.GetCommandLineArgs().Contains("--emit-il"))
-            {
-                PrintGeneratedIL(generatedAssembly);
-            }
-            
-            // Опционально: сохранение сборки в файл
-            var saveAssemblyArgs = Environment.GetCommandLineArgs();
-            int saveIndex = Array.IndexOf(saveAssemblyArgs, "--save-assembly");
-            if (saveIndex >= 0 && saveIndex + 1 < saveAssemblyArgs.Length)
-            {
-                string outputPath = saveAssemblyArgs[saveIndex + 1];
-                Console.WriteLine($"**[ INFO ] Saving generated assembly to file: {outputPath}");
-                SaveAssemblyToFile(codeGenerator, outputPath);
-            }
-            
-            // Опционально: выполнение сгенерированного кода
-            if (Environment.GetCommandLineArgs().Contains("--run"))
-            {
-                ExecuteGeneratedAssembly(generatedAssembly);
-            }
+            codeGenerator.ValidateTypes();
         }
-        catch (Exception ex)
+
+        Console.WriteLine("**[ OK ] Code generation completed successfully!");
+        
+        // Опционально: вывод сгенерированного IL
+        if (Environment.GetCommandLineArgs().Contains("--emit-il"))
         {
-            Console.WriteLine($"**[ ERR ] Code generation failed: {ex.Message}");
-            if (Environment.GetCommandLineArgs().Contains("--debug"))
-            {
-                Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
-            }
-            throw new CompilerException("Code generation failed", ex);
+            PrintGeneratedIL(generatedAssembly);
+        }
+        
+        // Опционально: сохранение сборки в файл
+        var saveAssemblyArgs = Environment.GetCommandLineArgs();
+        int saveIndex = Array.IndexOf(saveAssemblyArgs, "--save-assembly");
+        if (saveIndex >= 0 && saveIndex + 1 < saveAssemblyArgs.Length)
+        {
+            string outputPath = saveAssemblyArgs[saveIndex + 1];
+            SaveAssemblyToFile(codeGenerator, outputPath);
+        }
+        
+        // ИСПРАВЛЕНИЕ: Передаём завершённые типы вместо Assembly
+        if (Environment.GetCommandLineArgs().Contains("--run"))
+        {
+            ExecuteGeneratedCode(codeGenerator);
         }
     }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"**[ ERR ] Code generation failed: {ex.Message}");
+        if (Environment.GetCommandLineArgs().Contains("--debug"))
+        {
+            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+        }
+        throw new CompilerException("Code generation failed", ex);
+    }
+}
+
+// НОВАЯ ФУНКЦИЯ: Выполнение сгенерированного кода
+private static void ExecuteGeneratedCode(CodeGenerator codeGenerator)
+{
+    Console.WriteLine("\n**[ INFO ] Executing generated code...");
+    Console.WriteLine("========================================");
+    
+    try
+    {
+        var allTypes = codeGenerator.GetAllTypes();
+        
+        if (allTypes.Count == 0)
+        {
+            Console.WriteLine("**[ WARN ] No types found to execute");
+            return;
+        }
+
+        bool executed = false;
+        
+        foreach (var kvp in allTypes)
+        {
+            var type = kvp.Value;
+            var typeName = kvp.Key;
+            
+            // Пропускаем встроенные типы
+            if (typeName.StartsWith("<"))
+                continue;
+            
+            var constructor = type.GetConstructor(Type.EmptyTypes);
+            if (constructor != null)
+            {
+                Console.WriteLine($"**[ INFO ] Creating instance of class: {typeName}");
+                
+                try
+                {
+                    var instance = Activator.CreateInstance(type);
+                    Console.WriteLine($"**[ OK ] Instance created successfully!");
+                    
+                    // Опционально: вызов методов
+                    var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
+                    if (mainMethod != null)
+                    {
+                        Console.WriteLine($"**[ INFO ] Calling method: Main()");
+                        var result = mainMethod.Invoke(instance, null);
+                        if (result != null)
+                        {
+                            Console.WriteLine($"**[ INFO ] Result: {result}");
+                        }
+                    }
+                    
+                    executed = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
+                    if (Environment.GetCommandLineArgs().Contains("--debug"))
+                    {
+                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+                    }
+                }
+            }
+        }
+        
+        if (!executed)
+        {
+            Console.WriteLine("**[ WARN ] No executable entry point found.");
+            Console.WriteLine("**[ INFO ] Available types:");
+            foreach (var kvp in allTypes)
+            {
+                Console.WriteLine($"  - {kvp.Key}");
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
+        if (Environment.GetCommandLineArgs().Contains("--debug"))
+        {
+            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+        }
+    }
+    
+    Console.WriteLine("========================================\n");
+}
+
 
     // ============================================================
     // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ КОДА
@@ -363,19 +454,49 @@ public class Program
         }
     }
 
-    private static void ExecuteGeneratedAssembly(Assembly assembly)
+private static void ExecuteGeneratedAssembly(Assembly assembly)
+{
+    Console.WriteLine("\n**[ INFO ] Executing generated code...");
+    Console.WriteLine("========================================");
+    
+    try
     {
-        Console.WriteLine("\n**[ INFO ] Executing generated code...");
-        Console.WriteLine("========================================");
+        // ИСПРАВЛЕНИЕ: Получаем типы из CodeGenerator, а не из Assembly
+        // Для динамических сборок Assembly.GetTypes() не работает
         
-        try
+        // Вместо этого используем рефлексию для получения завершённых типов
+        var assemblyBuilder = assembly as AssemblyBuilder;
+        if (assemblyBuilder == null)
         {
-            // Ищем entry point для выполнения
-            // Стратегия: ищем первый класс с конструктором без параметров
+            Console.WriteLine("**[ ERR ] Assembly is not an AssemblyBuilder");
+            return;
+        }
+
+        // Получаем модуль
+        var modules = assemblyBuilder.GetLoadedModules();
+        Console.WriteLine($"**[ INFO ] Modules found: {modules.Length}");
+        if (modules.Length == 0)
+        {
+            Console.WriteLine("**[ WARN ] No modules found in assembly");
+            return;
+        }
+
+        var module = modules[0];
+        bool executed = false;
+
+        // Пытаемся найти типы через ModuleBuilder
+        if (module is ModuleBuilder moduleBuilder)
+        {
+            // Для динамических модулей нужно вручную отслеживать созданные типы
+            // Используем рефлексию для доступа к внутренним структурам
+            var types = GetTypesFromModuleBuilder(moduleBuilder);
             
-            var types = assembly.GetTypes();
-            bool executed = false;
-            
+            if (types.Count == 0)
+            {
+                Console.WriteLine("**[ WARN ] No types found in module");
+                return;
+            }
+
             foreach (var type in types)
             {
                 // Пропускаем встроенные типы компилятора
@@ -393,11 +514,10 @@ public class Program
                         Console.WriteLine($"**[ OK ] Instance created successfully!");
                         
                         // Опционально: вызов методов, если они есть
-                        // Например, можно искать метод main() или run()
-                        var mainMethod = type.GetMethod("main", BindingFlags.Public | BindingFlags.Instance);
+                        var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
                         if (mainMethod != null)
                         {
-                            Console.WriteLine($"**[ INFO ] Calling method: main()");
+                            Console.WriteLine($"**[ INFO ] Calling method: Main()");
                             mainMethod.Invoke(instance, null);
                         }
                         
@@ -414,24 +534,85 @@ public class Program
                     }
                 }
             }
-            
-            if (!executed)
-            {
-                Console.WriteLine("**[ WARN ] No executable entry point found.");
-                Console.WriteLine("**[ INFO ] Looking for a class with parameterless constructor...");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
-            if (Environment.GetCommandLineArgs().Contains("--debug"))
-            {
-                Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
-            }
         }
         
-        Console.WriteLine("========================================\n");
+        if (!executed)
+        {
+            Console.WriteLine("**[ WARN ] No executable entry point found.");
+            Console.WriteLine("**[ INFO ] Tried to find a class with parameterless constructor.");
+        }
     }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
+        if (Environment.GetCommandLineArgs().Contains("--debug"))
+        {
+            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+        }
+    }
+    
+    Console.WriteLine("========================================\n");
+}
+
+// НОВАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
+private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
+{
+    var types = new List<Type>();
+    
+    try
+    {
+        // Используем рефлексию для доступа к внутреннему полю _typeBuilderDict
+        var typeBuilderDictField = typeof(ModuleBuilder).GetField(
+            "_typeBuilderDict",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        
+        if (typeBuilderDictField != null)
+        {
+            var typeBuilderDict = typeBuilderDictField.GetValue(moduleBuilder);
+            if (typeBuilderDict is System.Collections.IDictionary dict)
+            {
+                foreach (System.Collections.DictionaryEntry entry in dict)
+                {
+                    if (entry.Value is TypeBuilder tb)
+                    {
+                        // Проверяем, что тип завершён
+                        try
+                        {
+                            var createdType = tb.CreateType();
+                            if (createdType != null)
+                            {
+                                types.Add(createdType);
+                            }
+                        }
+                        catch
+                        {
+                            // Тип уже был создан, пытаемся получить его через рефлексию
+                            var createdTypeField = typeof(TypeBuilder).GetField(
+                                "_bakedRuntimeType",
+                                BindingFlags.NonPublic | BindingFlags.Instance);
+                            
+                            if (createdTypeField != null)
+                            {
+                                var createdType = createdTypeField.GetValue(tb) as Type;
+                                if (createdType != null)
+                                {
+                                    types.Add(createdType);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"**[ DEBUG ] Failed to get types via reflection: {ex.Message}");
+    }
+    
+    return types;
+}
+
 
     // ============================================================
     // СУЩЕСТВУЮЩИЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ)

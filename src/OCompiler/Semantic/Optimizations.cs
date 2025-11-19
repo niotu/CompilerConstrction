@@ -608,6 +608,23 @@ namespace OCompiler.Semantic
             return expr;
         }
 
+        private ExpressionNode NormalizeConstructors(ExpressionNode expr)
+        {
+            if (expr is FunctionalCall funcCall && funcCall.Function is IdentifierExpression ident)
+            {
+                // Проверяем, это вызов встроенного типа как конструктора
+                var typeName = ident.Name;
+                if (typeName is "Integer" or "Real" or "Boolean")
+                {
+                    // Преобразуем в ConstructorInvocation
+                    return new ConstructorInvocation(typeName, null, funcCall.Arguments);
+                }
+            }
+            
+            return expr;
+        }
+
+
         private ExpressionNode TryEvalMethod(ExpressionNode func, List<ExpressionNode> args)
         {
             // Сначала нормализуем левую часть - функция может быть MemberAccessExpression с FunctionalCall или ConstructorInvocation
