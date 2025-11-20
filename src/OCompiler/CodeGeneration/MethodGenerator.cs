@@ -15,6 +15,10 @@ namespace OCompiler.CodeGeneration
     {
         private readonly TypeMapper _typeMapper;
         private readonly ClassHierarchy _hierarchy;
+        private Dictionary<string, Type>? _completedTypes; // НОВОЕ: Завершённые типы из CodeGenerator
+        private Dictionary<string, TypeBuilder>? _typeBuilders; // НОВОЕ: TypeBuilders для незавершённых типов
+        private Dictionary<string, Dictionary<string, ConstructorBuilder>>? _constructorsBySignature; // НОВОЕ: Сохранённые конструкторы по сигнатуре
+        private Dictionary<string, Dictionary<string, MethodBuilder>>? _methodsBySignature; // НОВОЕ: Сохранённые методы по сигнатуре
         private ILGenerator? _il;
         private Dictionary<string, LocalBuilder>? _locals;
         private Dictionary<string, Type>? _localTypes; // НОВОЕ: Типы локальных переменных
@@ -26,6 +30,55 @@ namespace OCompiler.CodeGeneration
         {
             _typeMapper = typeMapper;
             _hierarchy = hierarchy;
+            _completedTypes = new Dictionary<string, Type>();
+            _typeBuilders = new Dictionary<string, TypeBuilder>();
+            _constructorsBySignature = new Dictionary<string, Dictionary<string, ConstructorBuilder>>();
+            _methodsBySignature = new Dictionary<string, Dictionary<string, MethodBuilder>>();
+        }
+
+        /// <summary>
+        /// Устанавливает словарь завершённых типов (вызывается из CodeGenerator после CreateType).
+        /// </summary>
+        public void SetCompletedTypes(Dictionary<string, Type> completedTypes)
+        {
+            _completedTypes = completedTypes;
+        }
+
+        /// <summary>
+        /// Устанавливает словарь TypeBuilders (вызывается из CodeGenerator в Phase 1).
+        /// </summary>
+        public void SetTypeBuilders(Dictionary<string, TypeBuilder> typeBuilders)
+        {
+            _typeBuilders = typeBuilders;
+        }
+
+        /// <summary>
+        /// Сохраняет конструктор для последующего поиска.
+        /// Сигнатура: "ClassName|param1Type|param2Type|..."
+        /// </summary>
+        public void RegisterConstructor(string className, Type[] paramTypes, ConstructorBuilder ctorBuilder)
+        {
+            if (!_constructorsBySignature!.ContainsKey(className))
+            {
+                _constructorsBySignature[className] = new Dictionary<string, ConstructorBuilder>();
+            }
+            
+            string signature = string.Join("|", paramTypes.Select(t => t.FullName));
+            _constructorsBySignature[className][signature] = ctorBuilder;
+        }
+
+        /// <summary>
+        /// Сохраняет метод для последующего поиска.
+        /// </summary>
+        public void RegisterMethod(string className, string methodName, Type[] paramTypes, MethodBuilder methodBuilder)
+        {
+            if (!_methodsBySignature!.ContainsKey(className))
+            {
+                _methodsBySignature[className] = new Dictionary<string, MethodBuilder>();
+            }
+            
+            string signature = $"{methodName}|{string.Join("|", paramTypes.Select(t => t.FullName))}";
+            _methodsBySignature[className][signature] = methodBuilder;
         }
 
         /// <summary>
@@ -45,6 +98,9 @@ namespace OCompiler.CodeGeneration
                 MethodAttributes.Public,
                 CallingConventions.Standard,
                 paramTypes);
+
+            // Сохраняем конструктор для последующего использования
+            RegisterConstructor(typeBuilder.Name, paramTypes, ctorBuilder);
 
             _il = ctorBuilder.GetILGenerator();
             _locals = new Dictionary<string, LocalBuilder>();
@@ -109,7 +165,7 @@ namespace OCompiler.CodeGeneration
             // Генерация тела конструктора
             if (ctorDecl.Body != null)
             {
-                GenerateMethodBody(ctorDecl.Body);
+                GenerateMethodBodyContent(ctorDecl.Body);
             }
 
             _il.Emit(OpCodes.Ret);
@@ -117,53 +173,58 @@ namespace OCompiler.CodeGeneration
             Console.WriteLine($"**[ DEBUG ]   Constructor: this({string.Join(", ", paramTypes.Select(t => t.Name))})");
         }
 
-
+        
         /// <summary>
-        /// Генерирует метод класса.
+        /// Генерирует метод класса (определение и IL всё в одном).
         /// </summary>
         public void GenerateMethod(
             TypeBuilder typeBuilder, 
             MethodDeclaration methodDecl,
             Dictionary<string, FieldBuilder> fields)
         {
-            Type returnType = string.IsNullOrEmpty(methodDecl.Header.ReturnType)
+            Type returnType = string.IsNullOrEmpty(methodDecl.Header?.ReturnType)
                 ? typeof(void)
                 : _typeMapper.GetNetType(methodDecl.Header.ReturnType);
 
-            var paramTypes = methodDecl.Header.Parameters
+            var paramTypes = methodDecl.Header?.Parameters
                 .Select(p => _typeMapper.GetNetType(p.Type.Name))
-                .ToArray();
+                .ToArray() ?? Type.EmptyTypes;
 
             var methodBuilder = typeBuilder.DefineMethod(
-                methodDecl.Header.Name,
+                methodDecl.Header?.Name ?? "Unknown",
                 MethodAttributes.Public,
                 returnType,
                 paramTypes);
 
+            // Сохраняем метод для последующего использования
+            RegisterMethod(typeBuilder.Name, methodDecl.Header?.Name ?? "Unknown", paramTypes, methodBuilder);
+
             if (methodDecl.Body == null)
             {
-                Console.WriteLine($"**[ DEBUG ]   Method (forward): {methodDecl.Header.Name}");
+                Console.WriteLine($"**[ DEBUG ]   Method (forward): {methodDecl.Header?.Name}");
                 return;
             }
 
             _il = methodBuilder.GetILGenerator();
             _locals = new Dictionary<string, LocalBuilder>();
-            _localTypes = new Dictionary<string, Type>(); // НОВОЕ
+            _localTypes = new Dictionary<string, Type>();
             _fields = fields;
             _parameters = new Dictionary<string, int>();
-            _parameterTypes = new Dictionary<string, Type>(); // НОВОЕ
+            _parameterTypes = new Dictionary<string, Type>();
 
             // Регистрируем параметры
-            for (int i = 0; i < methodDecl.Header.Parameters.Count; i++)
+            if (methodDecl.Header != null)
             {
-                var param = methodDecl.Header.Parameters[i];
-                _parameters[param.Identifier] = i + 1;
-                _parameterTypes[param.Identifier] = paramTypes[i]; // НОВОЕ
+                for (int i = 0; i < methodDecl.Header.Parameters.Count; i++)
+                {
+                    var param = methodDecl.Header.Parameters[i];
+                    _parameters[param.Identifier] = i + 1;
+                    _parameterTypes[param.Identifier] = paramTypes[i];
+                }
             }
 
-
             // Генерация тела метода
-            GenerateMethodBody(methodDecl.Body);
+            GenerateMethodBodyContent(methodDecl.Body);
 
             // Если метод void и нет явного return
             if (returnType == typeof(void))
@@ -171,13 +232,13 @@ namespace OCompiler.CodeGeneration
                 _il.Emit(OpCodes.Ret);
             }
 
-            Console.WriteLine($"**[ DEBUG ]   Method: {methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
+            Console.WriteLine($"**[ DEBUG ]   Method: {methodDecl.Header?.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
         }
 
         /// <summary>
-        /// Генерирует тело метода.
+        /// Генерирует тело метода (внутренний метод для обработки элементов).
         /// </summary>
-        private void GenerateMethodBody(MethodBodyNode body)
+        private void GenerateMethodBodyContent(MethodBodyNode body)
         {
             foreach (var element in body.Elements)
             {
@@ -493,9 +554,42 @@ namespace OCompiler.CodeGeneration
             }
 
             // Пользовательские классы
-            Type type = _typeMapper.GetNetType(ctor.ClassName);
             var argTypes = ctor.Arguments.Select(a => _typeMapper.InferType(a)).ToArray();
-            var constructor = type.GetConstructor(argTypes);
+            ConstructorInfo? constructor = null;
+            
+            // НОВОЕ: Сначала пытаемся получить завершённый тип
+            if (_completedTypes?.TryGetValue(ctor.ClassName, out var completedType) == true)
+            {
+                constructor = completedType.GetConstructor(argTypes);
+            }
+            else if (_typeBuilders?.TryGetValue(ctor.ClassName, out var typeBuilder) == true)
+            {
+                // Для незавершённых типов - ищем в сохранённых конструкторах
+                if (_constructorsBySignature!.TryGetValue(ctor.ClassName, out var ctorsBySignature))
+                {
+                    string signature = string.Join("|", argTypes.Select(t => t.FullName));
+                    if (ctorsBySignature.TryGetValue(signature, out var ctorBuilder))
+                    {
+                        constructor = ctorBuilder as ConstructorInfo;
+                    }
+                }
+            }
+            else
+            {
+                // Fallback на TypeMapper
+                try
+                {
+                    var type = _typeMapper.GetNetType(ctor.ClassName);
+                    constructor = type.GetConstructor(argTypes);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Если тип не найден вообще
+                    throw new InvalidOperationException(
+                        $"Cannot create instance of '{ctor.ClassName}': type not found. " +
+                        $"Make sure the type is defined before being used.");
+                }
+            }
             
             if (constructor == null)
             {
@@ -527,6 +621,20 @@ namespace OCompiler.CodeGeneration
                     var pseudoConstructor = new ConstructorInvocation(
                         typeName,
                         null, // нет generic параметра
+                        funcCall.Arguments
+                    );
+                    GenerateConstructorInvocation(pseudoConstructor);
+                    return;
+                }
+
+                // НОВОЕ: Проверяем, это ли пользовательский тип (класс)
+                // Если это вызов типа как функции, это конструктор
+                if (_typeMapper.IsKnownType(typeName))
+                {
+                    // Пользовательский класс - это конструктор
+                    var pseudoConstructor = new ConstructorInvocation(
+                        typeName,
+                        null,
                         funcCall.Arguments
                     );
                     GenerateConstructorInvocation(pseudoConstructor);
@@ -618,13 +726,31 @@ namespace OCompiler.CodeGeneration
                 GenerateExpression(arg);
             }
             
-            // Ищем метод
-            var method = targetType.GetMethod(
-                methodName,
-                BindingFlags.Public | BindingFlags.Instance,
-                null,
-                argTypes,
-                null);
+            MethodInfo? method = null;
+            
+            // НОВОЕ: Проверяем, является ли targetType TypeBuilder
+            if (targetType is TypeBuilder targetTypeBuilder)
+            {
+                // Для TypeBuilder - ищем в сохранённых методах
+                if (_methodsBySignature!.TryGetValue(targetTypeBuilder.Name, out var methodsBySignature))
+                {
+                    string signature = $"{methodName}|{string.Join("|", argTypes.Select(t => t.FullName))}";
+                    if (methodsBySignature.TryGetValue(signature, out var methodBuilder))
+                    {
+                        method = methodBuilder as MethodInfo;
+                    }
+                }
+            }
+            else
+            {
+                // Для обычных типов
+                method = targetType.GetMethod(
+                    methodName,
+                    BindingFlags.Public | BindingFlags.Instance,
+                    null,
+                    argTypes,
+                    null);
+            }
             
             if (method == null)
             {
@@ -998,14 +1124,14 @@ namespace OCompiler.CodeGeneration
             _il.Emit(OpCodes.Brfalse, elseLabel);
 
             // Then-ветка
-            GenerateMethodBody(ifStmt.ThenBody);
+            GenerateMethodBodyContent(ifStmt.ThenBody);
             _il.Emit(OpCodes.Br, endLabel);
 
             // Else-ветка
             _il.MarkLabel(elseLabel);
             if (ifStmt.ElseBody != null)
             {
-                GenerateMethodBody(ifStmt.ElseBody.Body);
+                GenerateMethodBodyContent(ifStmt.ElseBody.Body);
             }
 
             _il.MarkLabel(endLabel);
@@ -1023,7 +1149,7 @@ namespace OCompiler.CodeGeneration
             _il.Emit(OpCodes.Brfalse, endLabel);
 
             // Тело цикла
-            GenerateMethodBody(whileLoop.Body);
+            GenerateMethodBodyContent(whileLoop.Body);
             _il.Emit(OpCodes.Br, startLabel);
 
             _il.MarkLabel(endLabel);

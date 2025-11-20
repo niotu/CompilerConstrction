@@ -212,6 +212,7 @@ public class ClassHierarchy
         // Конструкторы Integer
         integer.Constructors.AddRange(new[]
         {
+            new BuiltInConstructorInfo(), // Конструктор без аргументов (по умолчанию 0)
             new BuiltInConstructorInfo 
             { 
                 Parameters = { new BuiltInParameterInfo { Name = "value", Type = "Integer" } } 
@@ -260,6 +261,7 @@ public class ClassHierarchy
         // Конструкторы Real
         real.Constructors.AddRange(new[]
         {
+            new BuiltInConstructorInfo(), // Конструктор без аргументов (по умолчанию 0.0)
             new BuiltInConstructorInfo 
             { 
                 Parameters = { new BuiltInParameterInfo { Name = "value", Type = "Real" } } 
@@ -305,9 +307,13 @@ public class ClassHierarchy
         var boolean = new BuiltInClassInfo { Name = "Boolean", BaseClass = "AnyValue" };
         
         // Конструкторы Boolean
-        boolean.Constructors.Add(new BuiltInConstructorInfo 
-        { 
-            Parameters = { new BuiltInParameterInfo { Name = "value", Type = "Boolean" } } 
+        boolean.Constructors.AddRange(new[]
+        {
+            new BuiltInConstructorInfo(), // Конструктор без аргументов (по умолчанию false)
+            new BuiltInConstructorInfo 
+            { 
+                Parameters = { new BuiltInParameterInfo { Name = "value", Type = "Boolean" } } 
+            }
         });
 
         // Методы Boolean

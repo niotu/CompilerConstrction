@@ -62,6 +62,19 @@ namespace OCompiler.CodeGeneration
         }
 
         /// <summary>
+        /// Проверка, является ли тип известным (встроенный или зарегистрированный пользовательский).
+        /// </summary>
+        public bool IsKnownType(string typeName)
+        {
+            // Проверяем встроенные типы
+            if (IsBuiltInType(typeName))
+                return true;
+            
+            // Проверяем зарегистрированные типы (пользовательские классы)
+            return _typeMap.ContainsKey(typeName);
+        }
+
+        /// <summary>
         /// Получение .NET типа по имени типа O.
         /// </summary>
         public Type GetNetType(string oTypeName)

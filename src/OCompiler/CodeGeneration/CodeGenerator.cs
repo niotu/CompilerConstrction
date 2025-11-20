@@ -21,7 +21,7 @@ namespace OCompiler.CodeGeneration
         private readonly MethodGenerator _methodGenerator;
         private readonly Dictionary<string, TypeBuilder> _typeBuilders;
         private readonly Dictionary<string, Type> _completedTypes;
-        private readonly Dictionary<string, ConstructorBuilder> _defaultConstructors; // НОВОЕ
+        private readonly Dictionary<string, Dictionary<string, FieldBuilder>> _typeFields;
         private readonly ClassHierarchy _hierarchy;
         private readonly string _assemblyName;
 
@@ -31,11 +31,10 @@ namespace OCompiler.CodeGeneration
             _hierarchy = hierarchy;
             _typeBuilders = new Dictionary<string, TypeBuilder>();
             _completedTypes = new Dictionary<string, Type>();
+            _typeFields = new Dictionary<string, Dictionary<string, FieldBuilder>>();
 
             var assemblyNameObj = new AssemblyName(assemblyName);
             
-            // Используем AssemblyBuilderAccess.Run для возможности выполнения
-            // Это даёт нам настоящие runtime типы, а не TypeBuilder
             _assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(
                 assemblyNameObj,
                 AssemblyBuilderAccess.Run);
@@ -53,31 +52,25 @@ namespace OCompiler.CodeGeneration
         /// </summary>
         public Assembly Generate(ProgramNode program)
         {
-            Console.WriteLine("**[ INFO ] Phase 1: Declaring types...");
+            Console.WriteLine("**[ INFO ] Phase 1: Declaring types, fields, constructors and methods...");
             
-            // Фаза 1: Объявление всех типов (без тел методов)
+            // Передаём TypeBuilders в MethodGenerator для использования во время генерации IL
+            _methodGenerator.SetTypeBuilders(_typeBuilders);
+            
+            // Фаза 1: Все определения и IL генерирование ДО CreateType
             foreach (var classDecl in program.Classes)
             {
-                DeclareType(classDecl);
+                GenerateTypeComplete(classDecl);
             }
 
-            Console.WriteLine($"**[ INFO ] Declared {_typeBuilders.Count} user types");
-            Console.WriteLine("**[ INFO ] Phase 2: Generating type members...");
+            Console.WriteLine($"**[ INFO ] Declared and generated {_typeBuilders.Count} user types");
+            Console.WriteLine("**[ INFO ] Phase 2: Creating runtime types...");
 
-            // Фаза 2: Генерация членов классов (поля, конструкторы, методы)
-            foreach (var classDecl in program.Classes)
-            {
-                GenerateClassMembers(classDecl);
-            }
-
-            Console.WriteLine("**[ INFO ] Phase 3: Finalizing types...");
-
-            // Фаза 3: Завершение создания типов
+            // Фаза 2: CreateType для всех
             foreach (var kvp in _typeBuilders)
             {
                 try
                 {
-                    // CreateType() возвращает RuntimeType в AssemblyBuilder с Access.Run
                     Type completedType = kvp.Value.CreateType()!;
                     
                     if (completedType == null)
@@ -85,28 +78,15 @@ namespace OCompiler.CodeGeneration
                         throw new InvalidOperationException($"CreateType() returned null for '{kvp.Key}'");
                     }
                     
-                    // Проверяем, что получили runtime тип
-                    if (completedType.GetType().Name.Contains("Builder"))
-                    {
-                        Console.WriteLine($"**[ WARN ] Type '{kvp.Key}' is still a builder, attempting recovery...");
-                        
-                        // Пытаемся загрузить через Assembly.GetType()
-                        var runtimeType = _assemblyBuilder.GetType(kvp.Key);
-                        if (runtimeType != null && !runtimeType.GetType().Name.Contains("Builder"))
-                        {
-                            completedType = runtimeType;
-                            Console.WriteLine($"**[ INFO ] Successfully recovered runtime type for '{kvp.Key}'");
-                        }
-                    }
-                    
                     _completedTypes[kvp.Key] = completedType;
+                    _typeMapper.RegisterUserType(kvp.Key, completedType);
                     
-                    Console.WriteLine($"**[ DEBUG ]   Finalized type: {kvp.Key}");
+                    Console.WriteLine($"**[ DEBUG ]   Created type: {kvp.Key}");
                 }
                 catch (Exception ex)
                 {
                     throw new InvalidOperationException(
-                        $"Failed to finalize type '{kvp.Key}': {ex.Message}", ex);
+                        $"Failed to create type '{kvp.Key}': {ex.Message}", ex);
                 }
             }
 
@@ -117,14 +97,14 @@ namespace OCompiler.CodeGeneration
         }
 
         /// <summary>
-        /// Объявляет тип класса (создаёт TypeBuilder).
+        /// Полная генерация типа: всё ДО CreateType (DefineType, DefineField, DefineConstructor, DefineMethod, IL).
         /// </summary>
-        private void DeclareType(ClassDeclaration classDecl)
+        private void GenerateTypeComplete(ClassDeclaration classDecl)
         {
-            // Пропускаем встроенные типы - они реализованы в BuiltinTypes
+            // Пропускаем встроенные типы
             if (_typeMapper.IsBuiltInType(classDecl.Name))
             {
-                Console.WriteLine($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name} (provided by BuiltinTypes)");
+                Console.WriteLine($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name}");
                 return;
             }
 
@@ -139,12 +119,11 @@ namespace OCompiler.CodeGeneration
                 baseType = typeof(object);
             }
 
-            // Создаём TypeBuilder для класса
+            // Создаём TypeBuilder
             TypeBuilder typeBuilder;
             
             if (!string.IsNullOrEmpty(classDecl.GenericParameter))
             {
-                // Обобщённый класс (например, Box[T])
                 typeBuilder = _moduleBuilder.DefineType(
                     classDecl.Name,
                     TypeAttributes.Public | TypeAttributes.Class,
@@ -155,45 +134,35 @@ namespace OCompiler.CodeGeneration
             }
             else
             {
-                // Обычный класс
                 typeBuilder = _moduleBuilder.DefineType(
                     classDecl.Name,
                     TypeAttributes.Public | TypeAttributes.Class,
                     baseType);
                 
-                Console.WriteLine($"**[ DEBUG ]   Declared type: {classDecl.Name}" + 
-                    (baseType != typeof(object) ? $" : {baseType.Name}" : ""));
+                Console.WriteLine($"**[ DEBUG ]   Declared type: {classDecl.Name}");
             }
 
             _typeBuilders[classDecl.Name] = typeBuilder;
             _typeMapper.RegisterUserType(classDecl.Name, typeBuilder);
-        }
 
-        /// <summary>
-        /// Генерирует члены класса (поля, конструкторы, методы).
-        /// </summary>
-        private void GenerateClassMembers(ClassDeclaration classDecl)
-        {
-            // Пропускаем встроенные типы
-            if (_typeMapper.IsBuiltInType(classDecl.Name))
-                return;
-
-            if (!_typeBuilders.TryGetValue(classDecl.Name, out var typeBuilder))
-            {
-                throw new InvalidOperationException($"Type '{classDecl.Name}' not found in type builders");
-            }
-
-            Console.WriteLine($"**[ DEBUG ] Generating members for: {classDecl.Name}");
-
-            // Генерация полей
+            // Добавляем поля
             var fields = new Dictionary<string, FieldBuilder>();
             foreach (var member in classDecl.Members.OfType<VariableDeclaration>())
             {
-                var field = GenerateField(typeBuilder, member);
-                fields[member.Identifier] = field;
-            }
+                Type fieldType = _typeMapper.InferType(member.Expression);
+                
+                var fieldBuilder = typeBuilder.DefineField(
+                    member.Identifier,
+                    fieldType,
+                    FieldAttributes.Private);
 
-            // Генерация конструкторов
+                fields[member.Identifier] = fieldBuilder;
+                Console.WriteLine($"**[ DEBUG ]   Field: {member.Identifier} : {fieldType.Name}");
+            }
+            
+            _typeFields[classDecl.Name] = fields;
+
+            // Генерируем конструкторы
             var hasConstructor = false;
             foreach (var member in classDecl.Members.OfType<ConstructorDeclaration>())
             {
@@ -204,44 +173,47 @@ namespace OCompiler.CodeGeneration
             // Если нет явного конструктора, создаём конструктор по умолчанию
             if (!hasConstructor)
             {
-                var defaultCtor = GenerateDefaultConstructor(typeBuilder);
-                _defaultConstructors[classDecl.Name] = defaultCtor; // НОВОЕ: Сохраняем
+                GenerateDefaultConstructor(typeBuilder);
             }
 
-            // Генерация методов
+            // Генерируем методы
             foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
             {
-                _methodGenerator.GenerateMethod(typeBuilder, member, fields);
+                try
+                {
+                    if (member.Header == null)
+                    {
+                        Console.WriteLine($"**[ WARN ] Method has null header, skipping");
+                        continue;
+                    }
+                    if (member.Body == null)
+                    {
+                        Console.WriteLine($"**[ DEBUG ]   Skipping method '{member.Header.Name}' (no body)");
+                        continue;
+                    }
+                    _methodGenerator.GenerateMethod(typeBuilder, member, fields);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"**[ ERR ] Failed to generate method '{member.Header?.Name}': {ex.Message}");
+                    throw;
+                }
             }
         }
 
 
         /// <summary>
-        /// Генерирует поле класса.
+        /// Генерирует конструктор по умолчанию (всё ДО CreateType).
         /// </summary>
-        private FieldBuilder GenerateField(TypeBuilder typeBuilder, VariableDeclaration varDecl)
-        {
-            Type fieldType = _typeMapper.InferType(varDecl.Expression);
-            
-            var fieldBuilder = typeBuilder.DefineField(
-                varDecl.Identifier,
-                fieldType,
-                FieldAttributes.Private);
-
-            Console.WriteLine($"**[ DEBUG ]   Field: {varDecl.Identifier} : {fieldType.Name}");
-
-            return fieldBuilder;
-        }
-
-        /// <summary>
-        /// Генерирует конструктор по умолчанию.
-        /// </summary>
-        private ConstructorBuilder GenerateDefaultConstructor(TypeBuilder typeBuilder)
+        private void GenerateDefaultConstructor(TypeBuilder typeBuilder)
         {
             var ctorBuilder = typeBuilder.DefineConstructor(
                 MethodAttributes.Public,
                 CallingConventions.Standard,
                 Type.EmptyTypes);
+
+            // Сохраняем конструктор
+            _methodGenerator.RegisterConstructor(typeBuilder.Name, Type.EmptyTypes, ctorBuilder);
 
             var il = ctorBuilder.GetILGenerator();
 
@@ -250,33 +222,20 @@ namespace OCompiler.CodeGeneration
 
             ConstructorInfo? baseConstructor = null;
 
-            // ИСПРАВЛЕНИЕ: Получаем конструктор базового класса
             if (typeBuilder.BaseType == typeof(object))
             {
-                // Базовый класс - object, используем его конструктор
                 baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
-            }
-            else if (typeBuilder.BaseType is TypeBuilder baseTypeBuilder)
-            {
-                // Базовый класс - ещё не завершённый TypeBuilder
-                // Ищем его сохранённый конструктор
-                var baseTypeName = baseTypeBuilder.Name;
-                
-                if (_defaultConstructors.TryGetValue(baseTypeName, out var savedBaseCtor))
-                {
-                    baseConstructor = savedBaseCtor;
-                }
-                else
-                {
-                    throw new InvalidOperationException(
-                        $"Default constructor for base type '{baseTypeName}' not found. " +
-                        $"Ensure base classes are generated before derived classes.");
-                }
             }
             else
             {
-                // Базовый класс - обычный Type
-                baseConstructor = typeBuilder.BaseType.GetConstructor(Type.EmptyTypes);
+                try
+                {
+                    baseConstructor = typeBuilder.BaseType!.GetConstructor(Type.EmptyTypes);
+                }
+                catch (NotSupportedException)
+                {
+                    baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
+                }
             }
 
             if (baseConstructor == null)
@@ -289,9 +248,8 @@ namespace OCompiler.CodeGeneration
             il.Emit(OpCodes.Ret);
 
             Console.WriteLine($"**[ DEBUG ]   Generated default constructor");
-
-            return ctorBuilder;
         }
+
 
 
         /// <summary>

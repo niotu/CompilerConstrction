@@ -126,6 +126,19 @@ namespace OCompiler.Semantic
         {
             var used = new HashSet<string>();
             
+            // НОВОЕ: Добавляем точку входа (main/Main) как используемый метод
+            // Он не должен быть удалён оптимизатором
+            foreach (var classDecl in classes)
+            {
+                foreach (var method in classDecl.Members.OfType<MethodDeclaration>())
+                {
+                    if (method.Header.Name == "main" || method.Header.Name == "Main")
+                    {
+                        used.Add($"{classDecl.Name}.{method.Header.Name}");
+                    }
+                }
+            }
+            
             // Сначала собираем все вызовы методов из тел методов и конструкторов
             foreach (var classDecl in classes)
             {

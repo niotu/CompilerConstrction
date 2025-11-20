@@ -59,7 +59,7 @@ namespace OCompiler.Parser
     public class VariableDeclaration : MemberDeclaration
     {
         public string Identifier { get; }
-        public ExpressionNode Expression { get; }
+        public ExpressionNode Expression { get; set; }
         public VariableDeclaration(string identifier, ExpressionNode expr)
         {
             Identifier = identifier;
@@ -119,7 +119,7 @@ namespace OCompiler.Parser
     public class Assignment : Statement
     {
         public string Identifier { get; }
-        public ExpressionNode Expression { get; }
+        public ExpressionNode Expression { get; set; }
         public Assignment(string id, ExpressionNode expr)
         {
             Identifier = id;
@@ -134,8 +134,8 @@ namespace OCompiler.Parser
 
     public class WhileLoop : Statement
     {
-        public ExpressionNode Condition { get; }
-        public MethodBodyNode Body { get; }
+        public ExpressionNode Condition { get; set; }
+        public MethodBodyNode Body { get; set; }
         public WhileLoop(ExpressionNode cond, MethodBodyNode body)
         {
             Condition = cond;
@@ -152,9 +152,9 @@ namespace OCompiler.Parser
 
     public class IfStatement : Statement
     {
-        public ExpressionNode Condition { get; }
-        public MethodBodyNode ThenBody { get; }
-        public ElsePart ElseBody { get; }
+        public ExpressionNode Condition { get; set; }
+        public MethodBodyNode ThenBody { get; set; }
+        public ElsePart ElseBody { get; set; }
         public IfStatement(ExpressionNode cond, MethodBodyNode thenBody, ElsePart elseBody)
         {
             Condition = cond;
@@ -189,7 +189,7 @@ namespace OCompiler.Parser
 
     public class ReturnStatement : Statement
     {
-        public ExpressionNode Expression { get; }
+        public ExpressionNode Expression { get; set; }
         public ReturnStatement(ExpressionNode expr) => Expression = expr;
 
         public override void Print(string indent = "")
@@ -267,8 +267,8 @@ namespace OCompiler.Parser
 
     public class MemberAccessExpression : ExpressionNode
     {
-        public ExpressionNode Target { get; }
-        public ExpressionNode Member { get; }
+        public ExpressionNode Target { get; set; }
+        public ExpressionNode Member { get; set; }
         
         public MemberAccessExpression(ExpressionNode target, ExpressionNode member)
         {
@@ -287,7 +287,7 @@ namespace OCompiler.Parser
     }
     public class ExpressionStatement : BodyElement
     {
-        public ExpressionNode Expression { get; }
+        public ExpressionNode Expression { get; set; }
         public ExpressionStatement(ExpressionNode expr) => Expression = expr;
         
         public override void Print(string indent = "")
@@ -399,8 +399,8 @@ namespace OCompiler.Parser
 
     public class FunctionalCall : ExpressionNode
     {
-        public ExpressionNode Function { get; }
-        public List<ExpressionNode> Arguments { get; }
+        public ExpressionNode Function { get; set; }
+        public List<ExpressionNode> Arguments { get; set; }
         public FunctionalCall(ExpressionNode function, List<ExpressionNode> args)
         {
             Function = function;

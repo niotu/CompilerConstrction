@@ -33,6 +33,9 @@ namespace OCompiler.Semantic
             if (_errors.Count > 0)
                 return;
             
+            // НОВОЕ: 0.5 Нормализация вызовов конструкторов (FunctionalCall → ConstructorInvocation)
+            NormalizeConstructorCalls(program);
+            
             // 1. Проверка корректности использования ключевых слов
             CheckKeywordUsage(program);
             
@@ -62,6 +65,158 @@ namespace OCompiler.Semantic
             
             // 10. Дополнительные проверки
             CheckAdditionalSemantics(program);
+        }
+
+        // НОВОЕ: Нормализация вызовов конструкторов
+        /// <summary>
+        /// Преобразует FunctionalCall nodes в ConstructorInvocation где это необходимо.
+        /// Например, Calc() преобразуется из FunctionalCall в ConstructorInvocation.
+        /// </summary>
+        private void NormalizeConstructorCalls(ProgramNode program)
+        {
+            var classNames = new HashSet<string>();
+            
+            // Собираем все имена пользовательских классов
+            foreach (var classDecl in program.Classes)
+            {
+                classNames.Add(classDecl.Name);
+            }
+            
+            // Добавляем встроенные типы
+            classNames.Add("Integer");
+            classNames.Add("Real");
+            classNames.Add("Boolean");
+            classNames.Add("Array");
+            classNames.Add("List");
+            
+            // Преобразуем FunctionalCall в ConstructorInvocation где нужно
+            foreach (var classDecl in program.Classes)
+            {
+                TransformConstructorCallsInClass(classDecl, classNames);
+            }
+        }
+
+        private void TransformConstructorCallsInClass(ClassDeclaration classDecl, HashSet<string> classNames)
+        {
+            // Трансформируем в телах конструкторов
+            foreach (var member in classDecl.Members.OfType<ConstructorDeclaration>())
+            {
+                if (member.Body != null)
+                {
+                    TransformConstructorCallsInBody(member.Body, classNames);
+                }
+            }
+            
+            // Трансформируем в телах методов
+            foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
+            {
+                if (member.Body != null)
+                {
+                    TransformConstructorCallsInBody(member.Body, classNames);
+                }
+            }
+        }
+
+        private void TransformConstructorCallsInBody(MethodBodyNode body, HashSet<string> classNames)
+        {
+            if (body?.Elements == null) return;
+            
+            for (int i = 0; i < body.Elements.Count; i++)
+            {
+                body.Elements[i] = TransformConstructorCallsInElement(body.Elements[i], classNames);
+            }
+        }
+
+        private BodyElement TransformConstructorCallsInElement(BodyElement element, HashSet<string> classNames)
+        {
+            if (element is VariableDeclaration varDecl)
+            {
+                varDecl.Expression = TransformConstructorCallsInExpression(varDecl.Expression, classNames);
+                return varDecl;
+            }
+            
+            if (element is Assignment assignment)
+            {
+                assignment.Expression = TransformConstructorCallsInExpression(assignment.Expression, classNames);
+                return assignment;
+            }
+            
+            if (element is ExpressionStatement exprStmt)
+            {
+                exprStmt.Expression = TransformConstructorCallsInExpression(exprStmt.Expression, classNames);
+                return exprStmt;
+            }
+            
+            if (element is WhileLoop whileLoop)
+            {
+                whileLoop.Condition = TransformConstructorCallsInExpression(whileLoop.Condition, classNames);
+                if (whileLoop.Body != null)
+                {
+                    TransformConstructorCallsInBody(whileLoop.Body, classNames);
+                }
+                return whileLoop;
+            }
+            
+            if (element is IfStatement ifStmt)
+            {
+                ifStmt.Condition = TransformConstructorCallsInExpression(ifStmt.Condition, classNames);
+                if (ifStmt.ThenBody != null)
+                {
+                    TransformConstructorCallsInBody(ifStmt.ThenBody, classNames);
+                }
+                if (ifStmt.ElseBody?.Body != null)
+                {
+                    TransformConstructorCallsInBody(ifStmt.ElseBody.Body, classNames);
+                }
+                return ifStmt;
+            }
+            
+            if (element is ReturnStatement returnStmt)
+            {
+                returnStmt.Expression = TransformConstructorCallsInExpression(returnStmt.Expression, classNames);
+                return returnStmt;
+            }
+            
+            return element;
+        }
+
+        private ExpressionNode TransformConstructorCallsInExpression(ExpressionNode expr, HashSet<string> classNames)
+        {
+            if (expr == null) return null;
+            
+            // Проверяем, является ли это FunctionalCall с именем класса
+            if (expr is FunctionalCall funcCall && 
+                funcCall.Function is IdentifierExpression idExpr && 
+                classNames.Contains(idExpr.Name))
+            {
+                // Преобразуем в ConstructorInvocation
+                return new ConstructorInvocation(
+                    idExpr.Name,
+                    null, // нет generic параметра для простых вызовов
+                    funcCall.Arguments ?? new List<ExpressionNode>()
+                );
+            }
+            
+            // Рекурсивно трансформируем вложенные выражения
+            if (expr is FunctionalCall fc)
+            {
+                fc.Function = TransformConstructorCallsInExpression(fc.Function, classNames);
+                if (fc.Arguments != null)
+                {
+                    for (int i = 0; i < fc.Arguments.Count; i++)
+                    {
+                        fc.Arguments[i] = TransformConstructorCallsInExpression(fc.Arguments[i], classNames);
+                    }
+                }
+            }
+            
+            if (expr is MemberAccessExpression mae)
+            {
+                mae.Target = TransformConstructorCallsInExpression(mae.Target, classNames);
+                mae.Member = TransformConstructorCallsInExpression(mae.Member, classNames);
+            }
+            
+            return expr;
         }
 
         // 1. Correct Keyword Usage
