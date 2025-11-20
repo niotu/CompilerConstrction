@@ -659,10 +659,28 @@ namespace OCompiler.CodeGeneration
 
                 // ИСПРАВЛЕНИЕ: Получаем реальный тип
                 Type targetType;
-                
-                if (memberAccess.Target is IdentifierExpression targetIdent)
+
+                // Используем рекурсивный метод для раскручивания цепочки вызовов
+                if (memberAccess.Target is FunctionalCall || memberAccess.Target is MemberAccessExpression)
                 {
-                    targetType = GetIdentifierType(targetIdent.Name);
+                    // Пытаемся определить тип через цепочку
+                    var chainType = ResolveChainedCallType(memberAccess.Target);
+                    if (chainType != typeof(object))
+                    {
+                        targetType = chainType;
+                    }
+                    else if (memberAccess.Target is IdentifierExpression targetIdent)
+                    {
+                        targetType = GetIdentifierType(targetIdent.Name);
+                    }
+                    else
+                    {
+                        targetType = _typeMapper.InferType(memberAccess.Target);
+                    }
+                }
+                else if (memberAccess.Target is IdentifierExpression targetIdent2)
+                {
+                    targetType = GetIdentifierType(targetIdent2.Name);
                 }
                 else
                 {
@@ -1153,6 +1171,72 @@ namespace OCompiler.CodeGeneration
             _il.Emit(OpCodes.Br, startLabel);
 
             _il.MarkLabel(endLabel);
+        }
+
+        /// <summary>
+        /// Рекурсивно определяет тип результата цепочки вызовов.
+        /// Раскручивает вложенные FunctionalCall и MemberAccess для поиска корневого типа.
+        /// </summary>
+        private Type ResolveChainedCallType(ExpressionNode expr)
+        {
+            // Базовый случай: простой идентификатор
+            if (expr is IdentifierExpression ident)
+            {
+                return GetIdentifierType(ident.Name);
+            }
+
+            // Случай: функциональный вызов (метод)
+            if (expr is FunctionalCall funcCall)
+            {
+                // Если это метод, вызванный на объекте: obj.Method(...)
+                if (funcCall.Function is MemberAccessExpression memberAccess)
+                {
+                    // Рекурсивно получаем тип целевого объекта
+                    var objType = ResolveChainedCallType(memberAccess.Target);
+                    var methodName = (memberAccess.Member as IdentifierExpression)?.Name;
+
+                    if (methodName != null)
+                    {
+                        // Пытаемся найти возвращаемый тип метода
+                        var oTypeName = _typeMapper.GetOTypeName(objType);
+                        if (oTypeName != null)
+                        {
+                            var returnType = _typeMapper.GetMethodReturnType(oTypeName, methodName);
+                            if (returnType != null)
+                            {
+                                return returnType;
+                            }
+                        }
+                    }
+                }
+
+                // Если это конструктор: ClassName(...)
+                if (funcCall.Function is IdentifierExpression ctorIdent)
+                {
+                    if (_typeMapper.IsKnownType(ctorIdent.Name))
+                    {
+                        try
+                        {
+                            return _typeMapper.GetNetType(ctorIdent.Name);
+                        }
+                        catch
+                        {
+                            return typeof(object);
+                        }
+                    }
+                }
+            }
+
+            // Случай: обращение к члену (например в выражении вне функционального вызова)
+            if (expr is MemberAccessExpression member)
+            {
+                var objType = ResolveChainedCallType(member.Target);
+                // Обычно это приводит к полю или свойству, но здесь мы не раскручиваем дальше
+                return typeof(object);
+            }
+
+            // Fallback
+            return typeof(object);
         }
     }
 }

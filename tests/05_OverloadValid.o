@@ -1,17 +1,17 @@
 class Calc is
     var current : Real(0)
 
-    method Add(a : Integer) : Real is
+    method Add(a : Integer) : Calc is
         current := current.Plus(a)
-        return current
+        return this
     end
 
-    method Add(a : Real) : Real is
+    method Add(a : Real) : Calc is
         current := current.Plus(a)
-        return current
+        return this
     end
     
-    method getResult : Real is
+    method getResult() : Real is
         return current
     end
 
@@ -21,7 +21,7 @@ class Calc is
 end
 
 class Main is
-    this() is
+    method main() is
         var calc : Calc()
         var result : Real()
         result := calc.Add(5).Add(3).getResult()

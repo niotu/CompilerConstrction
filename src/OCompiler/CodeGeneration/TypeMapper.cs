@@ -168,8 +168,69 @@ namespace OCompiler.CodeGeneration
                     return _typeMap[ident.Name];
                 }
             }
+            // Если функция — обращение к члену (например calc.Add(...))
+            if (funcCall.Function is MemberAccessExpression member)
+            {
+                // Попробуем определить тип целевого объекта, если это простая ссылка на тип
+                if (member.Target is IdentifierExpression targetIdent)
+                {
+                    // Если идентификатор — имя типа (зарегистрировано в _typeMap)
+                    if (_typeMap.TryGetValue(targetIdent.Name, out var netType))
+                    {
+                        // Найдём сигнатуру метода в иерархии классов и вернём его возвращаемый тип
+                        var methodName = (member.Member as IdentifierExpression)?.Name;
+                        if (!string.IsNullOrEmpty(methodName))
+                        {
+                            try
+                            {
+                                var returnType = GetMethodReturnType(targetIdent.Name, methodName);
+                                if (returnType != null)
+                                    return returnType;
+                            }
+                            catch
+                            {
+                                // Игнорируем и падаем к fallback
+                            }
+                        }
+                    }
+                }
+            }
 
             return typeof(object);
+        }
+
+        /// <summary>
+        /// Возвращает имя O-типа по .NET типу, если он зарегистрирован.
+        /// </summary>
+        public string? GetOTypeName(Type netType)
+        {
+            foreach (var kv in _typeMap)
+            {
+                if (kv.Value == netType) return kv.Key;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Находит возвращаемый .NET-тип метода по имени класса O и имени метода.
+        /// Возвращает null, если метод не найден или тип не может быть сопоставлен.
+        /// </summary>
+        public Type? GetMethodReturnType(string oClassName, string methodName)
+        {
+            var methodDecl = _hierarchy.FindMethodInHierarchy(methodName, oClassName);
+            if (methodDecl == null) return null;
+
+            var returnTypeName = methodDecl.Header.ReturnType;
+            if (string.IsNullOrEmpty(returnTypeName)) return typeof(void);
+
+            try
+            {
+                return GetNetType(returnTypeName);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private Type InferMemberAccessType(MemberAccessExpression member)
