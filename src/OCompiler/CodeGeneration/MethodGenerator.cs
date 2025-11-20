@@ -15,70 +15,59 @@ namespace OCompiler.CodeGeneration
     {
         private readonly TypeMapper _typeMapper;
         private readonly ClassHierarchy _hierarchy;
-        private Dictionary<string, Type>? _completedTypes; // НОВОЕ: Завершённые типы из CodeGenerator
-        private Dictionary<string, TypeBuilder>? _typeBuilders; // НОВОЕ: TypeBuilders для незавершённых типов
-        private Dictionary<string, Dictionary<string, ConstructorBuilder>>? _constructorsBySignature; // НОВОЕ: Сохранённые конструкторы по сигнатуре
-        private Dictionary<string, Dictionary<string, MethodBuilder>>? _methodsBySignature; // НОВОЕ: Сохранённые методы по сигнатуре
+        private readonly CodeGenerator? _codeGenerator;
+        private readonly ProgramNode? _programAst;
+        
+        // Словари для кэширования информации о методах и конструкторах
+        private readonly Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>> _constructors;
+        private readonly Dictionary<string, List<(string methodName, Type[] paramTypes, Type returnType)>> _methodSignatures;
+        
         private ILGenerator? _il;
         private Dictionary<string, LocalBuilder>? _locals;
-        private Dictionary<string, Type>? _localTypes; // НОВОЕ: Типы локальных переменных
+        private Dictionary<string, Type>? _localTypes;
         private Dictionary<string, FieldBuilder>? _fields;
         private Dictionary<string, int>? _parameters;
-        private Dictionary<string, Type>? _parameterTypes; // НОВОЕ: Типы параметров
+        private Dictionary<string, Type>? _parameterTypes;
 
-        public MethodGenerator(TypeMapper typeMapper, ClassHierarchy hierarchy)
+        public MethodGenerator(TypeMapper typeMapper, ClassHierarchy hierarchy, CodeGenerator? codeGenerator = null, ProgramNode? programAst = null)
         {
             _typeMapper = typeMapper;
             _hierarchy = hierarchy;
-            _completedTypes = new Dictionary<string, Type>();
-            _typeBuilders = new Dictionary<string, TypeBuilder>();
-            _constructorsBySignature = new Dictionary<string, Dictionary<string, ConstructorBuilder>>();
-            _methodsBySignature = new Dictionary<string, Dictionary<string, MethodBuilder>>();
+            _codeGenerator = codeGenerator;
+            _programAst = programAst;
+            
+            // Инициализируем словари
+            _constructors = new Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>>();
+            _methodSignatures = new Dictionary<string, List<(string, Type[], Type)>>();
         }
 
         /// <summary>
-        /// Устанавливает словарь завершённых типов (вызывается из CodeGenerator после CreateType).
-        /// </summary>
-        public void SetCompletedTypes(Dictionary<string, Type> completedTypes)
-        {
-            _completedTypes = completedTypes;
-        }
-
-        /// <summary>
-        /// Устанавливает словарь TypeBuilders (вызывается из CodeGenerator в Phase 1).
-        /// </summary>
-        public void SetTypeBuilders(Dictionary<string, TypeBuilder> typeBuilders)
-        {
-            _typeBuilders = typeBuilders;
-        }
-
-        /// <summary>
-        /// Сохраняет конструктор для последующего поиска.
-        /// Сигнатура: "ClassName|param1Type|param2Type|..."
+        /// Регистрирует конструктор для последующего использования.
         /// </summary>
         public void RegisterConstructor(string className, Type[] paramTypes, ConstructorBuilder ctorBuilder)
         {
-            if (!_constructorsBySignature!.ContainsKey(className))
+            if (!_constructors.ContainsKey(className))
             {
-                _constructorsBySignature[className] = new Dictionary<string, ConstructorBuilder>();
+                _constructors[className] = new List<(ConstructorBuilder ctor, Type[] paramTypes)>();
             }
-            
-            string signature = string.Join("|", paramTypes.Select(t => t.FullName));
-            _constructorsBySignature[className][signature] = ctorBuilder;
+
+            _constructors[className].Add((ctorBuilder, paramTypes));
+            Console.WriteLine($"**[ DEBUG ]   Registered constructor: {className}({string.Join(", ", paramTypes.Select(t => t.Name))})");
         }
 
+
         /// <summary>
-        /// Сохраняет метод для последующего поиска.
+        /// Регистрирует сигнатуру метода для последующего использования.
         /// </summary>
-        public void RegisterMethod(string className, string methodName, Type[] paramTypes, MethodBuilder methodBuilder)
+        public void RegisterMethod(string className, string methodName, Type[] paramTypes, Type returnType)
         {
-            if (!_methodsBySignature!.ContainsKey(className))
+            if (!_methodSignatures.ContainsKey(className))
             {
-                _methodsBySignature[className] = new Dictionary<string, MethodBuilder>();
+                _methodSignatures[className] = new List<(string, Type[], Type)>();
             }
             
-            string signature = $"{methodName}|{string.Join("|", paramTypes.Select(t => t.FullName))}";
-            _methodsBySignature[className][signature] = methodBuilder;
+            _methodSignatures[className].Add((methodName, paramTypes, returnType));
+            Console.WriteLine($"**[ DEBUG ]   Registered method: {className}.{methodName}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
         }
 
         /// <summary>
@@ -99,8 +88,8 @@ namespace OCompiler.CodeGeneration
                 CallingConventions.Standard,
                 paramTypes);
 
-            // Сохраняем конструктор для последующего использования
-            RegisterConstructor(typeBuilder.Name, paramTypes, ctorBuilder);
+            // Регистрируем конструктор
+            RegisterConstructor(classDecl.Name, paramTypes, ctorBuilder);
 
             _il = ctorBuilder.GetILGenerator();
             _locals = new Dictionary<string, LocalBuilder>();
@@ -120,7 +109,6 @@ namespace OCompiler.CodeGeneration
             // Вызов конструктора базового класса
             _il.Emit(OpCodes.Ldarg_0); // this
 
-            // ИСПРАВЛЕНИЕ: Безопасное получение конструктора базового класса
             ConstructorInfo? baseConstructor;
             
             if (typeBuilder.BaseType == typeof(object))
@@ -129,15 +117,12 @@ namespace OCompiler.CodeGeneration
             }
             else
             {
-                // Для завершённых типов можно использовать GetConstructor
-                // Для TypeBuilder - нужна альтернатива
                 try
                 {
                     baseConstructor = typeBuilder.BaseType!.GetConstructor(Type.EmptyTypes);
                 }
                 catch (NotSupportedException)
                 {
-                    // Если базовый тип - TypeBuilder, используем object
                     Console.WriteLine($"**[ WARN ] Cannot get base constructor, using object()");
                     baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
                 }
@@ -173,35 +158,35 @@ namespace OCompiler.CodeGeneration
             Console.WriteLine($"**[ DEBUG ]   Constructor: this({string.Join(", ", paramTypes.Select(t => t.Name))})");
         }
 
-        
         /// <summary>
-        /// Генерирует метод класса (определение и IL всё в одном).
+        /// Генерирует метод класса.
         /// </summary>
         public void GenerateMethod(
             TypeBuilder typeBuilder, 
             MethodDeclaration methodDecl,
-            Dictionary<string, FieldBuilder> fields)
+            Dictionary<string, FieldBuilder> fields,
+            string className)
         {
-            Type returnType = string.IsNullOrEmpty(methodDecl.Header?.ReturnType)
+            Type returnType = string.IsNullOrEmpty(methodDecl.Header.ReturnType)
                 ? typeof(void)
                 : _typeMapper.GetNetType(methodDecl.Header.ReturnType);
 
-            var paramTypes = methodDecl.Header?.Parameters
+            var paramTypes = methodDecl.Header.Parameters
                 .Select(p => _typeMapper.GetNetType(p.Type.Name))
-                .ToArray() ?? Type.EmptyTypes;
+                .ToArray();
+
+            // Регистрируем метод
+            RegisterMethod(className, methodDecl.Header.Name, paramTypes, returnType);
 
             var methodBuilder = typeBuilder.DefineMethod(
-                methodDecl.Header?.Name ?? "Unknown",
+                methodDecl.Header.Name,
                 MethodAttributes.Public,
                 returnType,
                 paramTypes);
 
-            // Сохраняем метод для последующего использования
-            RegisterMethod(typeBuilder.Name, methodDecl.Header?.Name ?? "Unknown", paramTypes, methodBuilder);
-
             if (methodDecl.Body == null)
             {
-                Console.WriteLine($"**[ DEBUG ]   Method (forward): {methodDecl.Header?.Name}");
+                Console.WriteLine($"**[ DEBUG ]   Method (forward): {methodDecl.Header.Name}");
                 return;
             }
 
@@ -213,14 +198,11 @@ namespace OCompiler.CodeGeneration
             _parameterTypes = new Dictionary<string, Type>();
 
             // Регистрируем параметры
-            if (methodDecl.Header != null)
+            for (int i = 0; i < methodDecl.Header.Parameters.Count; i++)
             {
-                for (int i = 0; i < methodDecl.Header.Parameters.Count; i++)
-                {
-                    var param = methodDecl.Header.Parameters[i];
-                    _parameters[param.Identifier] = i + 1;
-                    _parameterTypes[param.Identifier] = paramTypes[i];
-                }
+                var param = methodDecl.Header.Parameters[i];
+                _parameters[param.Identifier] = i + 1;
+                _parameterTypes[param.Identifier] = paramTypes[i];
             }
 
             // Генерация тела метода
@@ -232,12 +214,9 @@ namespace OCompiler.CodeGeneration
                 _il.Emit(OpCodes.Ret);
             }
 
-            Console.WriteLine($"**[ DEBUG ]   Method: {methodDecl.Header?.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
+            Console.WriteLine($"**[ DEBUG ]   Method: {methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
         }
 
-        /// <summary>
-        /// Генерирует тело метода (внутренний метод для обработки элементов).
-        /// </summary>
         private void GenerateMethodBodyContent(MethodBodyNode body)
         {
             foreach (var element in body.Elements)
@@ -246,9 +225,6 @@ namespace OCompiler.CodeGeneration
             }
         }
 
-        /// <summary>
-        /// Генерирует элемент тела метода.
-        /// </summary>
         private void GenerateBodyElement(BodyElement element)
         {
             switch (element)
@@ -263,8 +239,7 @@ namespace OCompiler.CodeGeneration
 
                 case ExpressionStatement exprStmt:
                     GenerateExpression(exprStmt.Expression);
-                    // Pop результат, если он не используется
-                    var exprType = _typeMapper.InferType(exprStmt.Expression);
+                    var exprType = InferExpressionType(exprStmt.Expression);
                     if (exprType != typeof(void))
                     {
                         _il!.Emit(OpCodes.Pop);
@@ -289,72 +264,34 @@ namespace OCompiler.CodeGeneration
             }
         }
 
-        /// <summary>
-        /// Генерирует объявление переменной.
-        /// </summary>
         private void GenerateVariableDeclaration(VariableDeclaration varDecl)
         {
             Type varType = _typeMapper.InferType(varDecl.Expression);
             var local = _il!.DeclareLocal(varType);
             
             _locals![varDecl.Identifier] = local;
-            _localTypes![varDecl.Identifier] = varType; // НОВОЕ: Сохраняем тип
+            _localTypes![varDecl.Identifier] = varType;
 
-            // Генерация инициализатора
+            Console.WriteLine($"**[ DEBUG ]     Variable: {varDecl.Identifier} : {varType.Name}");
+
             GenerateExpression(varDecl.Expression);
             _il.Emit(OpCodes.Stloc, local);
         }
 
-/// <summary>
-/// Определяет тип идентификатора (переменная, параметр или поле).
-/// </summary>
-        private Type GetIdentifierType(string identifier)
-        {
-            // 1. Проверяем локальные переменные
-            if (_localTypes!.TryGetValue(identifier, out var localType))
-            {
-                return localType;
-            }
-
-            // 2. Проверяем параметры метода
-            if (_parameterTypes!.TryGetValue(identifier, out var paramType))
-            {
-                return paramType;
-            }
-
-            // 3. Проверяем поля класса
-            if (_fields!.TryGetValue(identifier, out var field))
-            {
-                return field.FieldType;
-            }
-
-            // 4. Не найдено - возвращаем object как fallback
-            Console.WriteLine($"**[ WARN ] Could not determine type for identifier '{identifier}', using Object");
-            return typeof(object);
-        }
-
-
-        /// <summary>
-        /// Генерирует присваивание.
-        /// </summary>
         private void GenerateAssignment(Assignment assignment)
         {
-            // Проверяем, это локальная переменная, параметр или поле
             if (_locals!.TryGetValue(assignment.Identifier, out var local))
             {
-                // Локальная переменная
                 GenerateExpression(assignment.Expression);
                 _il!.Emit(OpCodes.Stloc, local);
             }
             else if (_parameters!.TryGetValue(assignment.Identifier, out var paramIndex))
             {
-                // Параметр метода
                 GenerateExpression(assignment.Expression);
                 _il!.Emit(OpCodes.Starg, paramIndex);
             }
             else if (_fields!.TryGetValue(assignment.Identifier, out var field))
             {
-                // Поле класса
                 _il!.Emit(OpCodes.Ldarg_0); // this
                 GenerateExpression(assignment.Expression);
                 _il.Emit(OpCodes.Stfld, field);
@@ -365,9 +302,6 @@ namespace OCompiler.CodeGeneration
             }
         }
 
-        /// <summary>
-        /// Генерирует выражение.
-        /// </summary>
         private void GenerateExpression(ExpressionNode expr)
         {
             switch (expr)
@@ -409,7 +343,6 @@ namespace OCompiler.CodeGeneration
             }
         }
 
-
         private void GenerateIdentifierLoad(IdentifierExpression ident)
         {
             if (_locals!.TryGetValue(ident.Name, out var local))
@@ -433,30 +366,19 @@ namespace OCompiler.CodeGeneration
 
         private void GenerateConstructorInvocation(ConstructorInvocation ctor)
         {
-            // Специальная обработка для примитивных типов
-            // Integer(5) -> просто загружаем 5
             if (ctor.ClassName == "Integer")
             {
                 if (ctor.Arguments.Count == 0)
                 {
-                    // Integer() -> 0
                     _il!.Emit(OpCodes.Ldc_I4_0);
                 }
                 else if (ctor.Arguments.Count == 1)
                 {
-                    // Integer(value) -> загружаем value
                     GenerateExpression(ctor.Arguments[0]);
-                    
-                    // Если аргумент не int, нужно конвертировать
                     var argType = _typeMapper.InferType(ctor.Arguments[0]);
                     if (argType == typeof(double))
                     {
-                        _il!.Emit(OpCodes.Conv_I4); // Real -> Integer
-                    }
-                    else if (argType == typeof(bool))
-                    {
-                        // Boolean -> Integer (true=1, false=0)
-                        // Уже на стеке как 0 или 1
+                        _il!.Emit(OpCodes.Conv_I4);
                     }
                 }
                 else
@@ -466,24 +388,19 @@ namespace OCompiler.CodeGeneration
                 return;
             }
 
-            // Real(3.14) -> загружаем 3.14
             if (ctor.ClassName == "Real")
             {
                 if (ctor.Arguments.Count == 0)
                 {
-                    // Real() -> 0.0
                     _il!.Emit(OpCodes.Ldc_R8, 0.0);
                 }
                 else if (ctor.Arguments.Count == 1)
                 {
-                    // Real(value) -> загружаем value
                     GenerateExpression(ctor.Arguments[0]);
-                    
-                    // Если аргумент не double, конвертируем
                     var argType = _typeMapper.InferType(ctor.Arguments[0]);
                     if (argType == typeof(int))
                     {
-                        _il!.Emit(OpCodes.Conv_R8); // Integer -> Real
+                        _il!.Emit(OpCodes.Conv_R8);
                     }
                 }
                 else
@@ -493,17 +410,14 @@ namespace OCompiler.CodeGeneration
                 return;
             }
 
-            // Boolean(true) -> загружаем true/false
             if (ctor.ClassName == "Boolean")
             {
                 if (ctor.Arguments.Count == 0)
                 {
-                    // Boolean() -> false
                     _il!.Emit(OpCodes.Ldc_I4_0);
                 }
                 else if (ctor.Arguments.Count == 1)
                 {
-                    // Boolean(value) -> загружаем value
                     GenerateExpression(ctor.Arguments[0]);
                 }
                 else
@@ -513,7 +427,6 @@ namespace OCompiler.CodeGeneration
                 return;
             }
 
-            // Массивы: Array[Integer](10)
             if (ctor.ClassName == "Array")
             {
                 if (string.IsNullOrEmpty(ctor.GenericParameter))
@@ -527,12 +440,11 @@ namespace OCompiler.CodeGeneration
                 }
                 
                 Type elementType = _typeMapper.GetNetType(ctor.GenericParameter);
-                GenerateExpression(ctor.Arguments[0]); // Размер массива
+                GenerateExpression(ctor.Arguments[0]);
                 _il!.Emit(OpCodes.Newarr, elementType);
                 return;
             }
 
-            // Списки: List[Integer]()
             if (ctor.ClassName == "List")
             {
                 if (string.IsNullOrEmpty(ctor.GenericParameter))
@@ -554,84 +466,67 @@ namespace OCompiler.CodeGeneration
             }
 
             // Пользовательские классы
-            var argTypes = ctor.Arguments.Select(a => _typeMapper.InferType(a)).ToArray();
-            ConstructorInfo? constructor = null;
-            
-            // НОВОЕ: Сначала пытаемся получить завершённый тип
-            if (_completedTypes?.TryGetValue(ctor.ClassName, out var completedType) == true)
+            // Пользовательские классы
+            Type type = _typeMapper.GetNetType(ctor.ClassName);
+
+            if (type is TypeBuilder) // незавершённый тип — ищем среди зарегистрированных
             {
-                constructor = completedType.GetConstructor(argTypes);
-            }
-            else if (_typeBuilders?.TryGetValue(ctor.ClassName, out var typeBuilder) == true)
-            {
-                // Для незавершённых типов - ищем в сохранённых конструкторах
-                if (_constructorsBySignature!.TryGetValue(ctor.ClassName, out var ctorsBySignature))
+                // 1) Сгенерировать аргументы на стек
+                var argTypes = ctor.Arguments.Select(a => _typeMapper.InferType(a)).ToArray();
+                foreach (var arg in ctor.Arguments)
                 {
-                    string signature = string.Join("|", argTypes.Select(t => t.FullName));
-                    if (ctorsBySignature.TryGetValue(signature, out var ctorBuilder))
+                    GenerateExpression(arg);
+                }
+
+                // 2) Найти ConstructorBuilder по заранее сохранённым типам
+                if (_constructors.TryGetValue(ctor.ClassName, out var list))
+                {
+                    ConstructorBuilder? match = null;
+                    foreach (var (cb, pts) in list)
                     {
-                        constructor = ctorBuilder as ConstructorInfo;
+                        if (pts.Length != argTypes.Length) continue;
+                        bool ok = true;
+                        for (int i = 0; i < pts.Length; i++)
+                        {
+                            if (pts[i] != argTypes[i]) { ok = false; break; }
+                        }
+                        if (ok) { match = cb; break; }
+                    }
+
+                    if (match != null)
+                    {
+                        _il!.Emit(OpCodes.Newobj, match);
+                        return;
                     }
                 }
+
+                throw new InvalidOperationException(
+                    $"Constructor for '{ctor.ClassName}({string.Join(", ", argTypes.Select(t => t.Name))})' not registered.");
             }
-            else
-            {
-                // Fallback на TypeMapper
-                try
-                {
-                    var type = _typeMapper.GetNetType(ctor.ClassName);
-                    constructor = type.GetConstructor(argTypes);
-                }
-                catch (InvalidOperationException)
-                {
-                    // Если тип не найден вообще
-                    throw new InvalidOperationException(
-                        $"Cannot create instance of '{ctor.ClassName}': type not found. " +
-                        $"Make sure the type is defined before being used.");
-                }
-            }
-            
-            if (constructor == null)
+
+            // Завершённый тип — обычная рефлексия
+            var completedArgTypes = ctor.Arguments.Select(a => _typeMapper.InferType(a)).ToArray();
+            var ci = type.GetConstructor(completedArgTypes);
+            if (ci == null)
             {
                 throw new InvalidOperationException(
-                    $"Constructor not found for type '{ctor.ClassName}' " +
-                    $"with arguments ({string.Join(", ", argTypes.Select(t => t.Name))})");
+                    $"Constructor not found for type '{ctor.ClassName}' with args ({string.Join(", ", completedArgTypes.Select(t => t.Name))})");
             }
+            foreach (var arg in ctor.Arguments) GenerateExpression(arg);
+            _il!.Emit(OpCodes.Newobj, ci);
 
-            // Генерируем аргументы
-            foreach (var arg in ctor.Arguments)
-            {
-                GenerateExpression(arg);
-            }
-
-            _il!.Emit(OpCodes.Newobj, constructor);
         }
+
 
         private void GenerateFunctionCall(FunctionalCall funcCall)
         {
-            // СЛУЧАЙ 1: Вызов конструктора встроенного типа (Integer(0), Real(3.14), Boolean(true))
+            // СЛУЧАЙ 1: Вызов конструктора встроенного типа
             if (funcCall.Function is IdentifierExpression identFunc)
             {
                 var typeName = identFunc.Name;
                 
-                // Проверяем, это конструктор встроенного типа
                 if (_typeMapper.IsBuiltInType(typeName))
                 {
-                    // Обрабатываем как конструктор
-                    var pseudoConstructor = new ConstructorInvocation(
-                        typeName,
-                        null, // нет generic параметра
-                        funcCall.Arguments
-                    );
-                    GenerateConstructorInvocation(pseudoConstructor);
-                    return;
-                }
-
-                // НОВОЕ: Проверяем, это ли пользовательский тип (класс)
-                // Если это вызов типа как функции, это конструктор
-                if (_typeMapper.IsKnownType(typeName))
-                {
-                    // Пользовательский класс - это конструктор
                     var pseudoConstructor = new ConstructorInvocation(
                         typeName,
                         null,
@@ -641,10 +536,8 @@ namespace OCompiler.CodeGeneration
                     return;
                 }
                 
-                // Это может быть вызов метода текущего класса или глобальной функции
                 throw new NotImplementedException(
-                    $"Direct function call '{typeName}' not recognized. " +
-                    $"If this is a constructor, use 'new' keyword or ensure it's a known type.");
+                    $"Direct function call '{typeName}' not recognized.");
             }
             
             // СЛУЧАЙ 2: Вызов метода на объекте
@@ -657,22 +550,12 @@ namespace OCompiler.CodeGeneration
                     throw new InvalidOperationException("Method name not found in member access");
                 }
 
-                // ИСПРАВЛЕНИЕ: Получаем реальный тип
-                Type targetType;
-                
-                if (memberAccess.Target is IdentifierExpression targetIdent)
-                {
-                    targetType = GetIdentifierType(targetIdent.Name);
-                }
-                else
-                {
-                    targetType = _typeMapper.InferType(memberAccess.Target);
-                }
+                Type targetType = InferExpressionType(memberAccess.Target);
 
-                // Генерируем целевой объект
+                Console.WriteLine($"**[ DEBUG ]       Calling {methodName} on type {targetType.Name}");
+
                 GenerateExpression(memberAccess.Target);
 
-                // Обработка встроенных методов
                 if (targetType == typeof(int))
                 {
                     GenerateIntegerMethodCall(methodName, funcCall.Arguments);
@@ -691,21 +574,18 @@ namespace OCompiler.CodeGeneration
                     return;
                 }
 
-                // Обработка методов массива
                 if (targetType.IsArray)
                 {
                     GenerateArrayMethodCall(methodName, funcCall.Arguments, targetType);
                     return;
                 }
 
-                // Обработка методов списка
                 if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>))
                 {
                     GenerateListMethodCall(methodName, funcCall.Arguments, targetType);
                     return;
                 }
 
-                // Обработка пользовательских методов
                 GenerateUserMethodCall(memberAccess.Target, methodName, funcCall.Arguments, targetType);
                 return;
             }
@@ -713,128 +593,205 @@ namespace OCompiler.CodeGeneration
             throw new NotImplementedException($"Function call pattern not recognized");
         }
 
-
-        private void GenerateUserMethodCall(ExpressionNode target, string methodName, List<ExpressionNode> arguments, Type targetType)
+        private Type GetIdentifierType(string identifier)
         {
-            // Целевой объект уже на стеке (загружен в GenerateFunctionCall)
-            
-            // Генерируем аргументы
-            var argTypes = arguments.Select(arg => _typeMapper.InferType(arg)).ToArray();
-            
-            foreach (var arg in arguments)
+            if (_localTypes != null && _localTypes.TryGetValue(identifier, out var localType))
             {
-                GenerateExpression(arg);
+                return localType;
             }
-            
-            MethodInfo? method = null;
-            
-            // НОВОЕ: Проверяем, является ли targetType TypeBuilder
-            if (targetType is TypeBuilder targetTypeBuilder)
+
+            if (_parameterTypes != null && _parameterTypes.TryGetValue(identifier, out var paramType))
             {
-                // Для TypeBuilder - ищем в сохранённых методах
-                if (_methodsBySignature!.TryGetValue(targetTypeBuilder.Name, out var methodsBySignature))
+                return paramType;
+            }
+
+            if (_fields != null && _fields.TryGetValue(identifier, out var field))
+            {
+                return field.FieldType;
+            }
+
+            Console.WriteLine($"**[ WARN ] Could not determine type for identifier '{identifier}', using Object");
+            return typeof(object);
+        }
+
+        private Type InferExpressionType(ExpressionNode expr)
+        {
+            switch (expr)
+            {
+                case IntegerLiteral:
+                    return typeof(int);
+                
+                case RealLiteral:
+                    return typeof(double);
+                
+                case BooleanLiteral:
+                    return typeof(bool);
+                
+                case IdentifierExpression ident:
+                    return GetIdentifierType(ident.Name);
+                
+                case ConstructorInvocation ctor:
+                    return _typeMapper.InferType(ctor);
+                
+                case FunctionalCall funcCall:
+                    return InferFunctionCallReturnType(funcCall);
+                
+                case MemberAccessExpression memberAccess:
+                    return InferMemberAccessReturnType(memberAccess);
+                
+                case ThisExpression:
+                    return typeof(object);
+                
+                default:
+                    return typeof(object);
+            }
+        }
+
+        private Type InferFunctionCallReturnType(FunctionalCall funcCall)
+        {
+            if (funcCall.Function is MemberAccessExpression memberAccess)
+            {
+                var targetType = InferExpressionType(memberAccess.Target);
+                var methodName = (memberAccess.Member as IdentifierExpression)?.Name;
+
+                if (methodName == null)
+                    return typeof(object);
+
+                if (targetType == typeof(int))
                 {
-                    string signature = $"{methodName}|{string.Join("|", argTypes.Select(t => t.FullName))}";
-                    if (methodsBySignature.TryGetValue(signature, out var methodBuilder))
+                    return methodName switch
                     {
-                        method = methodBuilder as MethodInfo;
+                        "Plus" or "Minus" or "Mult" or "Div" or "Rem" or "UnaryMinus" => typeof(int),
+                        "Less" or "LessEqual" or "Greater" or "GreaterEqual" or "Equal" => typeof(bool),
+                        "toReal" => typeof(double),
+                        _ => typeof(object)
+                    };
+                }
+
+                if (targetType == typeof(double))
+                {
+                    return methodName switch
+                    {
+                        "Plus" or "Minus" or "Mult" or "Div" or "UnaryMinus" => typeof(double),
+                        "Less" or "LessEqual" or "Greater" or "GreaterEqual" or "Equal" => typeof(bool),
+                        "toInteger" => typeof(int),
+                        _ => typeof(object)
+                    };
+                }
+
+                if (targetType == typeof(bool))
+                {
+                    return methodName switch
+                    {
+                        "And" or "Or" or "Xor" or "Not" or "Equal" => typeof(bool),
+                        _ => typeof(object)
+                    };
+                }
+
+                var argTypes = funcCall.Arguments.Select(InferExpressionType).ToArray();
+                
+                var astReturnType = GetMethodReturnTypeFromAst(targetType.Name, methodName, argTypes);
+                if (astReturnType != null)
+                    return astReturnType;
+
+                try
+                {
+                    var method = targetType.GetMethod(
+                        methodName,
+                        BindingFlags.Public | BindingFlags.Instance,
+                        null,
+                        argTypes,
+                        null);
+
+                    if (method != null)
+                    {
+                        Console.WriteLine($"**[ DEBUG ]       Method {targetType.Name}.{methodName} returns {method.ReturnType.Name} (from reflection)");
+                        return method.ReturnType;
+                    }
+                }
+                catch
+                {
+                    // Ignored
+                }
+
+                Console.WriteLine($"**[ WARN ] Could not determine return type for {targetType.Name}.{methodName}, using Object");
+            }
+
+            return typeof(object);
+        }
+
+        private Type? GetMethodReturnTypeFromAst(string typeName, string methodName, Type[] argumentTypes)
+        {
+            if (_programAst == null)
+                return null;
+
+            var classDecl = _programAst.Classes.FirstOrDefault(c => c.Name == typeName);
+            if (classDecl == null)
+                return null;
+
+            foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
+            {
+                if (member.Header.Name == methodName)
+                {
+                    if (member.Header.Parameters.Count == argumentTypes.Length)
+                    {
+                        bool match = true;
+                        for (int i = 0; i < argumentTypes.Length; i++)
+                        {
+                            var expectedType = _typeMapper.GetNetType(member.Header.Parameters[i].Type.Name);
+                            if (expectedType != argumentTypes[i])
+                            {
+                                match = false;
+                                break;
+                            }
+                        }
+
+                        if (match)
+                        {
+                            if (!string.IsNullOrEmpty(member.Header.ReturnType))
+                            {
+                                var returnType = _typeMapper.GetNetType(member.Header.ReturnType);
+                                Console.WriteLine($"**[ DEBUG ]       Method {typeName}.{methodName} returns {returnType.Name} (from AST)");
+                                return returnType;
+                            }
+                            else
+                            {
+                                // Метод void
+                                Console.WriteLine($"**[ DEBUG ]       Method {typeName}.{methodName} returns void (from AST)");
+                                return typeof(void);
+                            }
+                        }
                     }
                 }
             }
-            else
-            {
-                // Для обычных типов
-                method = targetType.GetMethod(
-                    methodName,
-                    BindingFlags.Public | BindingFlags.Instance,
-                    null,
-                    argTypes,
-                    null);
-            }
-            
-            if (method == null)
-            {
-                throw new InvalidOperationException(
-                    $"Method '{methodName}' not found in type '{targetType.Name}' " +
-                    $"with arguments ({string.Join(", ", argTypes.Select(t => t.Name))})");
-            }
-            
-            // Вызываем метод
-            _il!.Emit(OpCodes.Callvirt, method);
+
+            return null;
         }
 
-        private void GenerateMemberAccess(MemberAccessExpression memberAccess)
+        private Type InferMemberAccessReturnType(MemberAccessExpression memberAccess)
         {
+            var targetType = InferExpressionType(memberAccess.Target);
             var memberName = (memberAccess.Member as IdentifierExpression)?.Name;
 
             if (memberName == null)
-            {
-                throw new InvalidOperationException("Member name not found");
-            }
+                return typeof(object);
 
-            // ИСПРАВЛЕНИЕ: Определяем реальный тип, учитывая локальные переменные
-            Type targetType;
-            
-            if (memberAccess.Target is IdentifierExpression targetIdent)
-            {
-                // Сначала пытаемся получить точный тип из контекста
-                targetType = GetIdentifierType(targetIdent.Name);
-            }
-            else
-            {
-                // Для сложных выражений используем TypeMapper
-                targetType = _typeMapper.InferType(memberAccess.Target);
-            }
-
-            // Генерируем целевой объект
-            GenerateExpression(memberAccess.Target);
-
-            // Обработка свойств массива
             if (targetType.IsArray && memberName == "Length")
-            {
-                var arrayHelperType = typeof(BuiltinTypes.OArray);
-                var elementType = targetType.GetElementType()!;
-                var lengthMethod = arrayHelperType.GetMethod("GetLength")!.MakeGenericMethod(elementType);
-                _il!.Emit(OpCodes.Call, lengthMethod);
-                return;
-            }
+                return typeof(int);
 
-            // Обработка свойств списка
             if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>) && memberName == "Length")
-            {
-                var listHelperType = typeof(BuiltinTypes.OList);
-                var elementType = targetType.GetGenericArguments()[0];
-                var lengthMethod = listHelperType.GetMethod("GetLength")!.MakeGenericMethod(elementType);
-                _il!.Emit(OpCodes.Call, lengthMethod);
-                return;
-            }
+                return typeof(int);
 
-            // Обработка полей пользовательских классов
             var field = targetType.GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             if (field != null)
-            {
-                _il!.Emit(OpCodes.Ldfld, field);
-                return;
-            }
+                return field.FieldType;
 
-            // Обработка свойств
             var property = targetType.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
             if (property != null)
-            {
-                var getter = property.GetGetMethod();
-                if (getter != null)
-                {
-                    _il!.Emit(OpCodes.Callvirt, getter);
-                    return;
-                }
-            }
+                return property.PropertyType;
 
-            throw new InvalidOperationException(
-                $"Member '{memberName}' not found on type '{targetType.Name}'. " +
-                $"Available members: {string.Join(", ", targetType.GetMembers().Select(m => m.Name))}");
+            return typeof(object);
         }
-
-
 
         private void GenerateIntegerMethodCall(string methodName, List<ExpressionNode> arguments)
         {
@@ -845,87 +802,75 @@ namespace OCompiler.CodeGeneration
                 case "Plus":
                     if (arguments.Count != 1) throw new InvalidOperationException("Plus requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var plusMethod = integerType.GetMethod("Plus");
-                    _il!.Emit(OpCodes.Call, plusMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Plus")!);
                     break;
 
                 case "Minus":
                     if (arguments.Count != 1) throw new InvalidOperationException("Minus requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var minusMethod = integerType.GetMethod("Minus");
-                    _il!.Emit(OpCodes.Call, minusMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Minus")!);
                     break;
 
                 case "Mult":
                     if (arguments.Count != 1) throw new InvalidOperationException("Mult requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var multMethod = integerType.GetMethod("Mult");
-                    _il!.Emit(OpCodes.Call, multMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Mult")!);
                     break;
 
                 case "Div":
                     if (arguments.Count != 1) throw new InvalidOperationException("Div requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var divMethod = integerType.GetMethod("Div");
-                    _il!.Emit(OpCodes.Call, divMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Div")!);
                     break;
 
                 case "Rem":
                     if (arguments.Count != 1) throw new InvalidOperationException("Rem requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var remMethod = integerType.GetMethod("Rem");
-                    _il!.Emit(OpCodes.Call, remMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Rem")!);
                     break;
 
                 case "UnaryMinus":
-                    var unaryMethod = integerType.GetMethod("UnaryMinus");
-                    _il!.Emit(OpCodes.Call, unaryMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("UnaryMinus")!);
                     break;
 
                 case "Less":
                     if (arguments.Count != 1) throw new InvalidOperationException("Less requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var lessMethod = integerType.GetMethod("Less");
-                    _il!.Emit(OpCodes.Call, lessMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Less")!);
                     break;
 
                 case "LessEqual":
                     if (arguments.Count != 1) throw new InvalidOperationException("LessEqual requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var lessEqualMethod = integerType.GetMethod("LessEqual");
-                    _il!.Emit(OpCodes.Call, lessEqualMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("LessEqual")!);
                     break;
 
                 case "Greater":
                     if (arguments.Count != 1) throw new InvalidOperationException("Greater requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var greaterMethod = integerType.GetMethod("Greater");
-                    _il!.Emit(OpCodes.Call, greaterMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Greater")!);
                     break;
 
                 case "GreaterEqual":
                     if (arguments.Count != 1) throw new InvalidOperationException("GreaterEqual requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var greaterEqualMethod = integerType.GetMethod("GreaterEqual");
-                    _il!.Emit(OpCodes.Call, greaterEqualMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("GreaterEqual")!);
                     break;
 
                 case "Equal":
                     if (arguments.Count != 1) throw new InvalidOperationException("Equal requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    var equalMethod = integerType.GetMethod("Equal");
-                    _il!.Emit(OpCodes.Call, equalMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Equal")!);
                     break;
 
                 case "toReal":
-                    var toRealMethod = integerType.GetMethod("ToReal");
-                    _il!.Emit(OpCodes.Call, toRealMethod!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("ToReal")!);
                     break;
 
                 default:
                     throw new NotImplementedException($"Integer method '{methodName}' not implemented");
             }
-        }          
+        }
 
         private void GenerateRealMethodCall(string methodName, List<ExpressionNode> arguments)
         {
@@ -1037,9 +982,7 @@ namespace OCompiler.CodeGeneration
                     if (arguments.Count != 1) 
                         throw new InvalidOperationException("Array.get requires 1 argument (index)");
                     
-                    // Массив уже на стеке, добавляем индекс
                     GenerateExpression(arguments[0]);
-                    
                     var getMethod = arrayHelperType.GetMethod("Get")!.MakeGenericMethod(elementType);
                     _il!.Emit(OpCodes.Call, getMethod);
                     break;
@@ -1048,18 +991,13 @@ namespace OCompiler.CodeGeneration
                     if (arguments.Count != 2) 
                         throw new InvalidOperationException("Array.set requires 2 arguments (index, value)");
                     
-                    // Массив уже на стеке, добавляем индекс и значение
-                    GenerateExpression(arguments[0]); // индекс
-                    GenerateExpression(arguments[1]); // значение
-                    
+                    GenerateExpression(arguments[0]);
+                    GenerateExpression(arguments[1]);
                     var setMethod = arrayHelperType.GetMethod("Set")!.MakeGenericMethod(elementType);
                     _il!.Emit(OpCodes.Call, setMethod);
-                    // set возвращает void, ничего не остаётся на стеке
                     break;
 
                 case "Length":
-                    // Length уже обрабатывается в GenerateMemberAccess
-                    // Но на всякий случай поддержим вызов как метод
                     var lengthMethod = arrayHelperType.GetMethod("GetLength")!.MakeGenericMethod(elementType);
                     _il!.Emit(OpCodes.Call, lengthMethod);
                     break;
@@ -1074,7 +1012,6 @@ namespace OCompiler.CodeGeneration
             }
         }
 
-
         private void GenerateListMethodCall(string methodName, List<ExpressionNode> arguments, Type listType)
         {
             var elementType = listType.GetGenericArguments()[0];
@@ -1083,7 +1020,9 @@ namespace OCompiler.CodeGeneration
             switch (methodName)
             {
                 case "append":
-                    if (arguments.Count != 1) throw new InvalidOperationException("List.append requires 1 argument");
+                    if (arguments.Count != 1) 
+                        throw new InvalidOperationException("List.append requires 1 argument (value)");
+                    
                     GenerateExpression(arguments[0]);
                     var appendMethod = listHelperType.GetMethod("Append")!.MakeGenericMethod(elementType);
                     _il!.Emit(OpCodes.Call, appendMethod);
@@ -1114,20 +1053,105 @@ namespace OCompiler.CodeGeneration
             }
         }
 
+        private void GenerateUserMethodCall(ExpressionNode target, string methodName, List<ExpressionNode> arguments, Type targetType)
+        {
+            var argTypes = arguments.Select(arg => InferExpressionType(arg)).ToArray();
+            
+            foreach (var arg in arguments)
+            {
+                GenerateExpression(arg);
+            }
+            
+            var method = targetType.GetMethod(
+                methodName,
+                BindingFlags.Public | BindingFlags.Instance,
+                null,
+                argTypes,
+                null);
+            
+            if (method == null)
+            {
+                throw new InvalidOperationException(
+                    $"Method '{methodName}' not found in type '{targetType.Name}' " +
+                    $"with arguments ({string.Join(", ", argTypes.Select(t => t.Name))})");
+            }
+            
+            _il!.Emit(OpCodes.Callvirt, method);
+        }
+
+        private void GenerateMemberAccess(MemberAccessExpression memberAccess)
+        {
+            var memberName = (memberAccess.Member as IdentifierExpression)?.Name;
+
+            if (memberName == null)
+            {
+                throw new InvalidOperationException("Member name not found");
+            }
+
+            Type targetType;
+            
+            if (memberAccess.Target is IdentifierExpression targetIdent)
+            {
+                targetType = GetIdentifierType(targetIdent.Name);
+            }
+            else
+            {
+                targetType = InferExpressionType(memberAccess.Target);
+            }
+
+            GenerateExpression(memberAccess.Target);
+
+            if (targetType.IsArray && memberName == "Length")
+            {
+                var arrayHelperType = typeof(BuiltinTypes.OArray);
+                var elementType = targetType.GetElementType()!;
+                var lengthMethod = arrayHelperType.GetMethod("GetLength")!.MakeGenericMethod(elementType);
+                _il!.Emit(OpCodes.Call, lengthMethod);
+                return;
+            }
+
+            if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>) && memberName == "Length")
+            {
+                var listHelperType = typeof(BuiltinTypes.OList);
+                var elementType = targetType.GetGenericArguments()[0];
+                var lengthMethod = listHelperType.GetMethod("GetLength")!.MakeGenericMethod(elementType);
+                _il!.Emit(OpCodes.Call, lengthMethod);
+                return;
+            }
+
+            var field = targetType.GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field != null)
+            {
+                _il!.Emit(OpCodes.Ldfld, field);
+                return;
+            }
+
+            var property = targetType.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
+            if (property != null)
+            {
+                var getter = property.GetGetMethod();
+                if (getter != null)
+                {
+                    _il!.Emit(OpCodes.Callvirt, getter);
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"Member '{memberName}' not found on type '{targetType.Name}'.");
+        }
+
         private void GenerateIfStatement(IfStatement ifStmt)
         {
             var elseLabel = _il!.DefineLabel();
             var endLabel = _il.DefineLabel();
 
-            // Условие
             GenerateExpression(ifStmt.Condition);
             _il.Emit(OpCodes.Brfalse, elseLabel);
 
-            // Then-ветка
             GenerateMethodBodyContent(ifStmt.ThenBody);
             _il.Emit(OpCodes.Br, endLabel);
 
-            // Else-ветка
             _il.MarkLabel(elseLabel);
             if (ifStmt.ElseBody != null)
             {
@@ -1144,11 +1168,9 @@ namespace OCompiler.CodeGeneration
 
             _il.MarkLabel(startLabel);
 
-            // Условие
             GenerateExpression(whileLoop.Condition);
             _il.Emit(OpCodes.Brfalse, endLabel);
 
-            // Тело цикла
             GenerateMethodBodyContent(whileLoop.Body);
             _il.Emit(OpCodes.Br, startLabel);
 

@@ -18,10 +18,10 @@ namespace OCompiler.CodeGeneration
         private readonly AssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
         private readonly TypeMapper _typeMapper;
-        private readonly MethodGenerator _methodGenerator;
+        private MethodGenerator _methodGenerator;
         private readonly Dictionary<string, TypeBuilder> _typeBuilders;
         private readonly Dictionary<string, Type> _completedTypes;
-        private readonly Dictionary<string, Dictionary<string, FieldBuilder>> _typeFields;
+        private readonly Dictionary<string, ConstructorBuilder> _defaultConstructors;
         private readonly ClassHierarchy _hierarchy;
         private readonly string _assemblyName;
 
@@ -31,7 +31,7 @@ namespace OCompiler.CodeGeneration
             _hierarchy = hierarchy;
             _typeBuilders = new Dictionary<string, TypeBuilder>();
             _completedTypes = new Dictionary<string, Type>();
-            _typeFields = new Dictionary<string, Dictionary<string, FieldBuilder>>();
+            _defaultConstructors = new Dictionary<string, ConstructorBuilder>();
 
             var assemblyNameObj = new AssemblyName(assemblyName);
             
@@ -41,32 +41,28 @@ namespace OCompiler.CodeGeneration
 
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(assemblyName);
             _typeMapper = new TypeMapper(_moduleBuilder, _hierarchy);
-            _methodGenerator = new MethodGenerator(_typeMapper, _hierarchy);
+            _methodGenerator = null!; // Инициализируется в Generate()
 
             Console.WriteLine($"**[ INFO ] Code generator initialized for assembly: {assemblyName}");
             Console.WriteLine($"**[ INFO ] Using BuiltinTypes for runtime support");
         }
 
-        /// <summary>
-        /// Генерирует .NET сборку из AST программы на языке O.
-        /// </summary>
         public Assembly Generate(ProgramNode program)
         {
+            // Инициализируем MethodGenerator с AST
+            _methodGenerator = new MethodGenerator(_typeMapper, _hierarchy, this, program);
+
             Console.WriteLine("**[ INFO ] Phase 1: Declaring types, fields, constructors and methods...");
             
-            // Передаём TypeBuilders в MethodGenerator для использования во время генерации IL
-            _methodGenerator.SetTypeBuilders(_typeBuilders);
-            
-            // Фаза 1: Все определения и IL генерирование ДО CreateType
-            foreach (var classDecl in program.Classes)
+            var sortedClasses = SortByInheritance(program.Classes);
+
+            foreach (var classDecl in sortedClasses)
             {
                 GenerateTypeComplete(classDecl);
             }
 
-            Console.WriteLine($"**[ INFO ] Declared and generated {_typeBuilders.Count} user types");
-            Console.WriteLine("**[ INFO ] Phase 2: Creating runtime types...");
+            Console.WriteLine("**[ INFO ] Phase 2: Finalizing types...");
 
-            // Фаза 2: CreateType для всех
             foreach (var kvp in _typeBuilders)
             {
                 try
@@ -79,14 +75,13 @@ namespace OCompiler.CodeGeneration
                     }
                     
                     _completedTypes[kvp.Key] = completedType;
-                    _typeMapper.RegisterUserType(kvp.Key, completedType);
                     
-                    Console.WriteLine($"**[ DEBUG ]   Created type: {kvp.Key}");
+                    Console.WriteLine($"**[ DEBUG ]   Finalized type: {kvp.Key}");
                 }
                 catch (Exception ex)
                 {
                     throw new InvalidOperationException(
-                        $"Failed to create type '{kvp.Key}': {ex.Message}", ex);
+                        $"Failed to finalize type '{kvp.Key}': {ex.Message}", ex);
                 }
             }
 
@@ -96,19 +91,45 @@ namespace OCompiler.CodeGeneration
             return _assemblyBuilder;
         }
 
-        /// <summary>
-        /// Полная генерация типа: всё ДО CreateType (DefineType, DefineField, DefineConstructor, DefineMethod, IL).
-        /// </summary>
+        private List<ClassDeclaration> SortByInheritance(List<ClassDeclaration> classes)
+        {
+            var sorted = new List<ClassDeclaration>();
+            var visited = new HashSet<string>();
+
+            void Visit(ClassDeclaration classDecl)
+            {
+                if (visited.Contains(classDecl.Name))
+                    return;
+
+                if (!string.IsNullOrEmpty(classDecl.Extension))
+                {
+                    var baseClass = classes.FirstOrDefault(c => c.Name == classDecl.Extension);
+                    if (baseClass != null)
+                    {
+                        Visit(baseClass);
+                    }
+                }
+
+                sorted.Add(classDecl);
+                visited.Add(classDecl.Name);
+            }
+
+            foreach (var classDecl in classes)
+            {
+                Visit(classDecl);
+            }
+
+            return sorted;
+        }
+
         private void GenerateTypeComplete(ClassDeclaration classDecl)
         {
-            // Пропускаем встроенные типы
             if (_typeMapper.IsBuiltInType(classDecl.Name))
             {
-                Console.WriteLine($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name}");
+                Console.WriteLine($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name} (provided by BuiltinTypes)");
                 return;
             }
 
-            // Определяем базовый тип
             Type? baseType = null;
             if (!string.IsNullOrEmpty(classDecl.Extension))
             {
@@ -119,7 +140,6 @@ namespace OCompiler.CodeGeneration
                 baseType = typeof(object);
             }
 
-            // Создаём TypeBuilder
             TypeBuilder typeBuilder;
             
             if (!string.IsNullOrEmpty(classDecl.GenericParameter))
@@ -129,8 +149,8 @@ namespace OCompiler.CodeGeneration
                     TypeAttributes.Public | TypeAttributes.Class,
                     baseType);
 
-                var genericParams = typeBuilder.DefineGenericParameters(classDecl.GenericParameter);
-                Console.WriteLine($"**[ DEBUG ]   Declared generic type: {classDecl.Name}<{classDecl.GenericParameter}>");
+                typeBuilder.DefineGenericParameters(classDecl.GenericParameter);
+                Console.WriteLine($"**[ DEBUG ]   Declared type: {classDecl.Name}<{classDecl.GenericParameter}>");
             }
             else
             {
@@ -139,30 +159,20 @@ namespace OCompiler.CodeGeneration
                     TypeAttributes.Public | TypeAttributes.Class,
                     baseType);
                 
-                Console.WriteLine($"**[ DEBUG ]   Declared type: {classDecl.Name}");
+                Console.WriteLine($"**[ DEBUG ]   Declared type: {classDecl.Name}" + 
+                    (baseType != typeof(object) ? $" : {baseType.Name}" : ""));
             }
 
             _typeBuilders[classDecl.Name] = typeBuilder;
             _typeMapper.RegisterUserType(classDecl.Name, typeBuilder);
 
-            // Добавляем поля
             var fields = new Dictionary<string, FieldBuilder>();
             foreach (var member in classDecl.Members.OfType<VariableDeclaration>())
             {
-                Type fieldType = _typeMapper.InferType(member.Expression);
-                
-                var fieldBuilder = typeBuilder.DefineField(
-                    member.Identifier,
-                    fieldType,
-                    FieldAttributes.Private);
-
-                fields[member.Identifier] = fieldBuilder;
-                Console.WriteLine($"**[ DEBUG ]   Field: {member.Identifier} : {fieldType.Name}");
+                var field = GenerateField(typeBuilder, member);
+                fields[member.Identifier] = field;
             }
-            
-            _typeFields[classDecl.Name] = fields;
 
-            // Генерируем конструкторы
             var hasConstructor = false;
             foreach (var member in classDecl.Members.OfType<ConstructorDeclaration>())
             {
@@ -170,55 +180,42 @@ namespace OCompiler.CodeGeneration
                 hasConstructor = true;
             }
 
-            // Если нет явного конструктора, создаём конструктор по умолчанию
             if (!hasConstructor)
             {
-                GenerateDefaultConstructor(typeBuilder);
+                var defaultCtor = GenerateDefaultConstructor(typeBuilder);
+                _defaultConstructors[classDecl.Name] = defaultCtor;
             }
 
-            // Генерируем методы
             foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
             {
-                try
-                {
-                    if (member.Header == null)
-                    {
-                        Console.WriteLine($"**[ WARN ] Method has null header, skipping");
-                        continue;
-                    }
-                    if (member.Body == null)
-                    {
-                        Console.WriteLine($"**[ DEBUG ]   Skipping method '{member.Header.Name}' (no body)");
-                        continue;
-                    }
-                    _methodGenerator.GenerateMethod(typeBuilder, member, fields);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"**[ ERR ] Failed to generate method '{member.Header?.Name}': {ex.Message}");
-                    throw;
-                }
+                _methodGenerator.GenerateMethod(typeBuilder, member, fields, classDecl.Name);
             }
         }
 
+        private FieldBuilder GenerateField(TypeBuilder typeBuilder, VariableDeclaration varDecl)
+        {
+            Type fieldType = _typeMapper.InferType(varDecl.Expression);
+            
+            var fieldBuilder = typeBuilder.DefineField(
+                varDecl.Identifier,
+                fieldType,
+                FieldAttributes.Private);
 
-        /// <summary>
-        /// Генерирует конструктор по умолчанию (всё ДО CreateType).
-        /// </summary>
-        private void GenerateDefaultConstructor(TypeBuilder typeBuilder)
+            Console.WriteLine($"**[ DEBUG ]   Field: {varDecl.Identifier} : {fieldType.Name}");
+
+            return fieldBuilder;
+        }
+
+        private ConstructorBuilder GenerateDefaultConstructor(TypeBuilder typeBuilder)
         {
             var ctorBuilder = typeBuilder.DefineConstructor(
                 MethodAttributes.Public,
                 CallingConventions.Standard,
                 Type.EmptyTypes);
 
-            // Сохраняем конструктор
-            _methodGenerator.RegisterConstructor(typeBuilder.Name, Type.EmptyTypes, ctorBuilder);
-
             var il = ctorBuilder.GetILGenerator();
 
-            // Вызов конструктора базового класса
-            il.Emit(OpCodes.Ldarg_0); // this
+            il.Emit(OpCodes.Ldarg_0);
 
             ConstructorInfo? baseConstructor = null;
 
@@ -226,16 +223,24 @@ namespace OCompiler.CodeGeneration
             {
                 baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
             }
+            else if (typeBuilder.BaseType is TypeBuilder baseTypeBuilder)
+            {
+                var baseTypeName = baseTypeBuilder.Name;
+                
+                if (_defaultConstructors.TryGetValue(baseTypeName, out var savedBaseCtor))
+                {
+                    baseConstructor = savedBaseCtor;
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Default constructor for base type '{baseTypeName}' not found. " +
+                        $"Ensure base classes are generated before derived classes.");
+                }
+            }
             else
             {
-                try
-                {
-                    baseConstructor = typeBuilder.BaseType!.GetConstructor(Type.EmptyTypes);
-                }
-                catch (NotSupportedException)
-                {
-                    baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
-                }
+                baseConstructor = typeBuilder.BaseType.GetConstructor(Type.EmptyTypes);
             }
 
             if (baseConstructor == null)
@@ -247,15 +252,11 @@ namespace OCompiler.CodeGeneration
             il.Emit(OpCodes.Call, baseConstructor);
             il.Emit(OpCodes.Ret);
 
-            Console.WriteLine($"**[ DEBUG ]   Generated default constructor");
+            Console.WriteLine($"**[ DEBUG ]   Constructor: this()");
+
+            return ctorBuilder;
         }
 
-
-
-        /// <summary>
-        /// Сохраняет сборку в файл (.exe или .dll).
-        /// ПРИМЕЧАНИЕ: В режиме AssemblyBuilderAccess.Run сохранение в файл невозможно.
-        /// </summary>
         public void SaveToFile(string outputPath)
         {
             throw new NotSupportedException(
@@ -269,26 +270,16 @@ namespace OCompiler.CodeGeneration
                 "Current mode supports --run flag for in-memory execution.");
         }
 
-        /// <summary>
-        /// Получает завершённый тип по имени.
-        /// </summary>
         public Type? GetCompletedType(string typeName)
         {
             return _completedTypes.TryGetValue(typeName, out var type) ? type : null;
         }
 
-        /// <summary>
-        /// Возвращает все сгенерированные типы.
-        /// </summary>
         public IReadOnlyDictionary<string, Type> GetAllTypes()
         {
             return _completedTypes;
         }
 
-        /// <summary>
-        /// Проверяет корректность всех сгенерированных типов.
-        /// Используется для отладки.
-        /// </summary>
         public void ValidateTypes()
         {
             Console.WriteLine("\n**[ DEBUG ] ========== TYPE VALIDATION ==========");
@@ -305,7 +296,6 @@ namespace OCompiler.CodeGeneration
                 Console.WriteLine($"**[ DEBUG ]   - Assembly: {type.Assembly.GetName().Name}");
                 Console.WriteLine($"**[ DEBUG ]   - Base type: {type.BaseType?.Name ?? "none"}");
                 
-                // Проверяем конструкторы
                 var ctors = type.GetConstructors(
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 
@@ -317,7 +307,6 @@ namespace OCompiler.CodeGeneration
                     Console.WriteLine($"**[ DEBUG ]     - {ctor.Name}({paramStr})");
                 }
                 
-                // Проверяем методы
                 var methods = type.GetMethods(
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
                 
@@ -332,7 +321,6 @@ namespace OCompiler.CodeGeneration
                     }
                 }
                 
-                // Проверяем поля
                 var fields = type.GetFields(
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
                 
@@ -358,9 +346,6 @@ namespace OCompiler.CodeGeneration
             Console.WriteLine("**[ DEBUG ] =======================================\n");
         }
 
-        /// <summary>
-        /// Получает информацию о сборке для диагностики.
-        /// </summary>
         public AssemblyInfo GetAssemblyInfo()
         {
             return new AssemblyInfo
@@ -375,9 +360,6 @@ namespace OCompiler.CodeGeneration
         }
     }
 
-    /// <summary>
-    /// Информация о сгенерированной сборке.
-    /// </summary>
     public class AssemblyInfo
     {
         public string Name { get; set; } = "";
