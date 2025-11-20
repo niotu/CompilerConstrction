@@ -1568,6 +1568,7 @@ namespace OCompiler.Semantic
         {
             foreach (var classDecl in program.Classes)
             {
+                _currentClass = classDecl.Name;
                 foreach (var method in classDecl.Members.OfType<MethodDeclaration>())
                 {
                     CheckMethodReturnStatements(method);

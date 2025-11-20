@@ -413,16 +413,32 @@ namespace OCompiler.Semantic
                     
                 case MemberAccessExpression memberAccess:
                     // Вызов метода через объект: obj.Method()
+                    // Если цель - простой идентификатор: берем его объявленный тип
                     if (memberAccess.Target is IdentifierExpression targetIdent)
                     {
-                        // Определяем тип переменной
                         return DetermineVariableType(targetIdent.Name, currentClass, program);
                     }
-                    else if (memberAccess.Target is MemberAccessExpression nestedMemberAccess)
+                    // Если цель - вложенный доступ к члену: рекурсивно определяем тип
+                    if (memberAccess.Target is MemberAccessExpression nestedMemberAccess)
                     {
-                        // Рекурсивно определяем тип для вложенных выражений
                         return DetermineTargetClass(nestedMemberAccess, currentClass, program);
                     }
+                    // Если цель - вызов функции/метода (например: calc.Add(5).Add(3)),
+                    // то нужно определить класс по внутренней функции этого вызова
+                    if (memberAccess.Target is FunctionalCall innerFuncCall)
+                    {
+                        // Определяем, к какому классу относится функция внутреннего вызова
+                        return DetermineTargetClass(innerFuncCall.Function, currentClass, program);
+                    }
+                    // Если цель - конструктор (например: Foo().Bar), возвращаем имя класса конструктора
+                    if (memberAccess.Target is ConstructorInvocation ctorInv)
+                    {
+                        return ctorInv.ClassName;
+                    }
+                    // В остальных случаях пробуем извлечь тип из выражения
+                    var extracted = ExtractTypeFromExpression(memberAccess.Target);
+                    if (extracted != null)
+                        return extracted;
                     break;
             }
             
