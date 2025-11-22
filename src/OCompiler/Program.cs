@@ -251,182 +251,360 @@ public class Program
     // НОВАЯ ФУНКЦИЯ: ГЕНЕРАЦИЯ КОДА
     // ============================================================
     private static void GenerateCode(ProgramNode ast, ClassHierarchy hierarchy, string sourceFileName)
-{
-    Console.WriteLine("**[ INFO ] Starting code generation...");
-    
-    try
     {
-        // Получаем имя для сборки из имени файла
-        string assemblyName = Path.GetFileNameWithoutExtension(sourceFileName);
+        Console.WriteLine("**[ INFO ] Starting code generation...");
         
-        // Создаем генератор кода
-        var codeGenerator = new CodeGenerator(assemblyName, hierarchy);
-        // Генерируем сборку
-        Assembly generatedAssembly = codeGenerator.Generate(ast);
-
-        // НОВОЕ: Проверка корректности типов
-        if (Environment.GetCommandLineArgs().Contains("--debug"))
+        try
         {
-            codeGenerator.ValidateTypes();
-        }
-
-        Console.WriteLine("**[ OK ] Code generation completed successfully!");
-        
-        // Опционально: вывод сгенерированного IL
-        if (Environment.GetCommandLineArgs().Contains("--emit-il"))
-        {
-            PrintGeneratedIL(generatedAssembly);
-        }
-        
-        // Опционально: сохранение сборки в файл
-        var saveAssemblyArgs = Environment.GetCommandLineArgs();
-        int saveIndex = Array.IndexOf(saveAssemblyArgs, "--save-assembly");
-        if (saveIndex >= 0 && saveIndex + 1 < saveAssemblyArgs.Length)
-        {
-            string outputPath = saveAssemblyArgs[saveIndex + 1];
-            SaveAssemblyToFile(codeGenerator, outputPath);
-        }
-        
-        // ИСПРАВЛЕНИЕ: Передаём завершённые типы вместо Assembly
-        if (Environment.GetCommandLineArgs().Contains("--run"))
-        {
-            ExecuteGeneratedCode(codeGenerator);
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"**[ ERR ] Code generation failed: {ex.Message}");
-        if (Environment.GetCommandLineArgs().Contains("--debug"))
-        {
-            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
-        }
-        throw new CompilerException("Code generation failed", ex);
-    }
-}
-
-// НОВАЯ ФУНКЦИЯ: Выполнение сгенерированного кода
-private static void ExecuteGeneratedCode(CodeGenerator codeGenerator)
-{
-    Console.WriteLine("\n**[ INFO ] Executing generated code...");
-    Console.WriteLine("========================================");
-    
-    try
-    {
-        var allTypes = codeGenerator.GetAllTypes();
-        
-        if (allTypes.Count == 0)
-        {
-            Console.WriteLine("**[ WARN ] No types found to execute");
-            return;
-        }
-
-        bool executed = false;
-        
-        foreach (var kvp in allTypes)
-        {
-            var type = kvp.Value;
-            var typeName = kvp.Key;
+            // Получаем имя для сборки из имени файла
+            string assemblyName = Path.GetFileNameWithoutExtension(sourceFileName);
             
-            // Пропускаем встроенные типы
-            if (typeName.StartsWith("<"))
-                continue;
-            
-            var constructor = type.GetConstructor(Type.EmptyTypes);
-            if (constructor != null)
+            // Создаем генератор кода
+            var codeGenerator = new CodeGenerator(assemblyName, hierarchy);
+            // Генерируем сборку
+            Assembly generatedAssembly = codeGenerator.Generate(ast);
+
+            // // НОВОЕ: Проверка корректности типов
+            if (Environment.GetCommandLineArgs().Contains("--debug"))
             {
-                Console.WriteLine($"**[ INFO ] Creating instance of class: {typeName}");
-                
-                try
+                codeGenerator.ValidateTypes();
+            }
+
+            Console.WriteLine("**[ OK ] Code generation completed successfully!");
+            var args = Environment.GetCommandLineArgs();
+            
+            // Опционально: вывод сгенерированного IL
+            if (args.Contains("--emit-il"))
+            {
+                PrintILAsText(codeGenerator);
+            }
+
+            if (args.Contains("--emit-assembly"))
+            {
+                codeGenerator.SaveToFile("OCompilerOutput.dll");
+            }
+
+            
+            // Опционально: сохранение сборки в файл
+            if (args.Contains("--save-assembly"))
+            {
+                int index = Array.IndexOf(args, "--save-assembly");
+                if (index + 1 < args.Length)
                 {
-                    var instance = Activator.CreateInstance(type);
-                    Console.WriteLine($"**[ OK ] Instance created successfully!");
+                    string outputPath = args[index + 1];
+                    Console.WriteLine($"**[ INFO ] --save-assembly flag: {outputPath}");
                     
-                    // Опционально: вызов методов
-                    var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
-                    if (mainMethod != null)
+                    // Сборка находится в памяти, запускаем Program.Main через Reflection
+                    try
                     {
-                        Console.WriteLine($"**[ INFO ] Calling method: Main()");
-                        var result = mainMethod.Invoke(instance, null);
-                        if (result != null)
+                        var assembly = codeGenerator.GetAssembly();
+                        var programType = assembly.GetType("Program");
+                        
+                        if (programType != null)
                         {
-                            Console.WriteLine($"**[ INFO ] Result: {result}");
+                            var mainMethod = programType.GetMethod("Main", 
+                                System.Reflection.BindingFlags.Public | 
+                                System.Reflection.BindingFlags.Static);
+                            
+                            if (mainMethod != null)
+                            {
+                                // Передаём имя класса точки входа
+                                string entryClassName = "Hello"; // или получи из args
+                                mainMethod.Invoke(null, new object[] { new string[] { entryClassName } });
+                                Console.WriteLine($"**[ OK ] Program executed with entry class: {entryClassName}");
+                            }
+                            else
+                            {
+                                Console.WriteLine("**[ ERR ] Main method not found in Program class");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("**[ ERR ] Program class not found in assembly");
                         }
                     }
-                    
-                    executed = true;
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
-                    if (Environment.GetCommandLineArgs().Contains("--debug"))
+                    catch (Exception ex)
                     {
-                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+                        Console.WriteLine($"**[ ERR ] Failed to execute assembly: {ex.Message}");
+                        if (ex.InnerException != null)
+                        {
+                            Console.WriteLine($"**[ ERR ] Inner exception: {ex.InnerException.Message}");
+                        }
                     }
                 }
             }
+
+            
+            // ИСПРАВЛЕНИЕ: Передаём завершённые типы вместо Assembly
+            if (Environment.GetCommandLineArgs().Contains("--run"))
+            {
+                ExecuteGeneratedCode(codeGenerator);
+            }
         }
-        
-        if (!executed)
+        catch (Exception ex)
         {
-            Console.WriteLine("**[ WARN ] No executable entry point found.");
-            Console.WriteLine("**[ INFO ] Available types:");
+            Console.WriteLine($"**[ ERR ] Code generation failed: {ex.Message}");
+            if (Environment.GetCommandLineArgs().Contains("--debug"))
+            {
+                Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+            }
+            throw new CompilerException("Code generation failed", ex);
+        }
+    }
+
+        private static void PrintILAsText(CodeGenerator codeGenerator)
+        {
+            var ilEmitter = new OCompiler.CodeGeneration.ILEmitter();
+            
+            // Генерируем директивы сборки
+            ilEmitter.EmitAssemblyDirective("GeneratedAssembly");
+            
+            var allTypes = codeGenerator.GetAllTypes();
+            
             foreach (var kvp in allTypes)
             {
-                Console.WriteLine($"  - {kvp.Key}");
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
-        if (Environment.GetCommandLineArgs().Contains("--debug"))
-        {
-            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
-        }
-    }
-    
-    Console.WriteLine("========================================\n");
-}
-
-
-    // ============================================================
-    // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ КОДА
-    // ============================================================
-    
-    private static void PrintGeneratedIL(Assembly assembly)
-    {
-        Console.WriteLine("\n**[ DEBUG ] Generated IL Instructions:");
-        Console.WriteLine("========================================");
-        
-        foreach (var type in assembly.GetTypes())
-        {
-            Console.WriteLine($"\nClass: {type.Name}");
-            
-            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
-            {
-                Console.WriteLine($"  Method: {method.Name}");
+                var typeName = kvp.Key;
+                var type = kvp.Value;
                 
-                try
+                // Пропускаем встроенные типы и Program
+                if (typeName is "Program" or "Integer" or "Real" or "Boolean")
+                    continue;
+                
+                ilEmitter.EmitClassStart(typeName);
+                
+                // Выводим поля
+                var fields = type.GetFields(
+                    System.Reflection.BindingFlags.Public | 
+                    System.Reflection.BindingFlags.NonPublic | 
+                    System.Reflection.BindingFlags.Instance | 
+                    System.Reflection.BindingFlags.DeclaredOnly);
+                
+                foreach (var field in fields)
                 {
-                    var methodBody = method.GetMethodBody();
-                    if (methodBody != null)
+                    ilEmitter.EmitFieldDeclaration(
+                        field.FieldType.Name.ToLower(),
+                        field.Name,
+                        field.IsPrivate);
+                }
+                
+                // Выводим конструкторы
+                var constructors = type.GetConstructors(
+                    System.Reflection.BindingFlags.Public | 
+                    System.Reflection.BindingFlags.NonPublic | 
+                    System.Reflection.BindingFlags.Instance);
+                
+                foreach (var ctor in constructors)
+                {
+                    var parameters = ctor.GetParameters();
+                    var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name.ToLower()} {p.Name}"));
+                    
+                    ilEmitter.EmitConstructorStart(paramStr);
+                    ilEmitter.EmitInstruction("ldarg.0");
+                    ilEmitter.EmitInstruction("call instance void [mscorlib]System.Object::.ctor()");
+                    ilEmitter.EmitConstructorEnd();
+                }
+                
+                // Выводим методы
+                var methods = type.GetMethods(
+                    System.Reflection.BindingFlags.Public | 
+                    System.Reflection.BindingFlags.NonPublic | 
+                    System.Reflection.BindingFlags.Instance | 
+                    System.Reflection.BindingFlags.DeclaredOnly);
+                
+                foreach (var method in methods)
+                {
+                    var parameters = method.GetParameters();
+                    var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name.ToLower()} {p.Name}"));
+                    
+                    ilEmitter.EmitMethodStart(
+                        method.Name,
+                        method.ReturnType.Name.ToLower(),
+                        paramStr);
+                    
+                    ilEmitter.EmitInstruction(".maxstack 8");
+                    ilEmitter.EmitReturn();
+                    
+                    ilEmitter.EmitMethodEnd();
+                }
+                
+                ilEmitter.EmitClassEnd();
+            }
+            
+            Console.WriteLine("\n**[ DEBUG ] Generated MSIL Code:");
+            Console.WriteLine("========================================");
+            Console.WriteLine(ilEmitter.GetILCode());
+            Console.WriteLine("========================================");
+        }
+
+        // НОВАЯ ФУНКЦИЯ: Выполнение сгенерированного кода
+        private static void ExecuteGeneratedCode(CodeGenerator codeGenerator)
+        {
+            Console.WriteLine("\n**[ INFO ] Executing generated code...");
+            Console.WriteLine("========================================");
+            
+            try
+            {
+                var allTypes = codeGenerator.GetAllTypes();
+                
+                if (allTypes.Count == 0)
+                {
+                    Console.WriteLine("**[ WARN ] No types found to execute");
+                    return;
+                }
+
+                bool executed = false;
+                
+                foreach (var kvp in allTypes)
+                {
+                    var type = kvp.Value;
+                    var typeName = kvp.Key;
+                    
+                    // Пропускаем встроенные типы
+                    if (typeName.StartsWith("<"))
+                        continue;
+                    
+                    var constructor = type.GetConstructor(Type.EmptyTypes);
+                    if (constructor != null)
                     {
-                        var il = methodBody.GetILAsByteArray();
-                        Console.WriteLine($"    IL Size: {il?.Length ?? 0} bytes");
-                        // Полная дизассемблировка IL требует дополнительной библиотеки
-                        // Например: ILSpy.Decompiler или System.Reflection.Metadata
+                        Console.WriteLine($"**[ INFO ] Creating instance of class: {typeName}");
+                        
+                        try
+                        {
+                            var instance = Activator.CreateInstance(type);
+                            Console.WriteLine($"**[ OK ] Instance created successfully!");
+                            
+                            // Опционально: вызов методов
+                            var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
+                            if (mainMethod != null)
+                            {
+                                Console.WriteLine($"**[ INFO ] Calling method: Main()");
+                                var result = mainMethod.Invoke(instance, null);
+                                if (result != null)
+                                {
+                                    Console.WriteLine($"**[ INFO ] Result: {result}");
+                                }
+                            }
+                            
+                            executed = true;
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
+                            if (Environment.GetCommandLineArgs().Contains("--debug"))
+                            {
+                                Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+                            }
+                        }
                     }
                 }
-                catch
+                
+                if (!executed)
                 {
-                    // Некоторые методы могут быть недоступны для получения тела
+                    Console.WriteLine("**[ WARN ] No executable entry point found.");
+                    Console.WriteLine("**[ INFO ] Available types:");
+                    foreach (var kvp in allTypes)
+                    {
+                        Console.WriteLine($"  - {kvp.Key}");
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
+                if (Environment.GetCommandLineArgs().Contains("--debug"))
+                {
+                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+                }
+            }
+            
+            Console.WriteLine("========================================\n");
         }
+
+
+        // ============================================================
+        // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ КОДА
+        // ============================================================
         
-        Console.WriteLine("========================================\n");
-    }
+        private static void PrintGeneratedIL(Assembly assembly, CodeGenerator codeGenerator)
+        {
+            Console.WriteLine("\n**[ DEBUG ] Generated IL Instructions:");
+            Console.WriteLine("========================================");
+
+            try
+            {
+                // Получаем типы из CodeGenerator, а не из Assembly
+                var allTypes = codeGenerator.GetAllTypes();
+                
+                if (allTypes.Count == 0)
+                {
+                    Console.WriteLine("**[ INFO ] No user-defined types generated.");
+                    return;
+                }
+
+                foreach (var kvp in allTypes)
+                {
+                    var typeName = kvp.Key;
+                    var type = kvp.Value;
+
+                    Console.WriteLine($"\n--- Type: {typeName} ---");
+                    
+                    var constructors = type.GetConstructors(
+                        System.Reflection.BindingFlags.Public | 
+                        System.Reflection.BindingFlags.NonPublic | 
+                        System.Reflection.BindingFlags.Instance);
+
+                    if (constructors.Length > 0)
+                    {
+                        Console.WriteLine($"Constructors:");
+                        foreach (var ctor in constructors)
+                        {
+                            var parameters = ctor.GetParameters();
+                            var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
+                            Console.WriteLine($"  - .ctor({paramStr})");
+                        }
+                    }
+
+                    var methods = type.GetMethods(
+                        System.Reflection.BindingFlags.Public | 
+                        System.Reflection.BindingFlags.NonPublic | 
+                        System.Reflection.BindingFlags.Instance | 
+                        System.Reflection.BindingFlags.DeclaredOnly);
+
+                    if (methods.Length > 0)
+                    {
+                        Console.WriteLine($"Methods:");
+                        foreach (var method in methods)
+                        {
+                            var parameters = method.GetParameters();
+                            var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
+                            Console.WriteLine($"  - {method.ReturnType.Name} {method.Name}({paramStr})");
+                        }
+                    }
+
+                    var fields = type.GetFields(
+                        System.Reflection.BindingFlags.Public | 
+                        System.Reflection.BindingFlags.NonPublic | 
+                        System.Reflection.BindingFlags.Instance | 
+                        System.Reflection.BindingFlags.DeclaredOnly);
+
+                    if (fields.Length > 0)
+                    {
+                        Console.WriteLine($"Fields:");
+                        foreach (var field in fields)
+                        {
+                            Console.WriteLine($"  - {field.FieldType.Name} {field.Name}");
+                        }
+                    }
+                }
+
+                Console.WriteLine("\n========================================");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"**[ WARN ] Could not retrieve IL information: {ex.Message}");
+            }
+        }
 
     private static void SaveAssemblyToFile(CodeGenerator codeGenerator, string outputPath)
     {

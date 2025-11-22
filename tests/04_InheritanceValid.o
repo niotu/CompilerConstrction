@@ -1,4 +1,7 @@
 class Animal is
+    this() is
+
+    end
     method Speak() : Integer is
         return 11111
     end
@@ -9,6 +12,9 @@ class Animal is
 end
 
 class Dog extends Animal is
+    this() is 
+
+    end
     method Speak() : Integer is
         return 22222
     end
@@ -21,5 +27,6 @@ class Test is
     this() is
         var a : Animal()
         var d : Dog()
+        a.Speak()
     end
 end

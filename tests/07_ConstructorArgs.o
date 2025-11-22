@@ -1,5 +1,7 @@
 class App is
     var x : Integer(0)
+    var y : Integer(14)
+    var z : Real(2.0)
     this(a : Integer) is
         x := a
     end
