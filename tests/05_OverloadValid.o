@@ -21,7 +21,7 @@ class Calc is
 end
 
 class Main is
-    method main() is
+    this() is
         var calc : Calc()
         var result : Real()
         result := calc.Add(3)

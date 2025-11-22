@@ -93,7 +93,8 @@ namespace OCompiler.CodeGeneration
             {
                 try
                 {
-                    var completedType = kvp.Value.CreateType();
+                    // Use CreateTypeInfo().AsType() to obtain a runtime Type usable with Activator
+                    var completedType = kvp.Value.CreateTypeInfo().AsType();
                     _completedTypes[kvp.Key] = completedType!;
                     Console.WriteLine($"**[ DEBUG ]   Finalized type: {kvp.Key}");
                 }

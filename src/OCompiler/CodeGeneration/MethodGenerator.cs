@@ -21,6 +21,7 @@ namespace OCompiler.CodeGeneration
         // Словари для кэширования информации о методах и конструкторах
         private readonly Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>> _constructors;
         private readonly Dictionary<string, List<(string methodName, Type[] paramTypes, Type returnType)>> _methodSignatures;
+        private readonly Dictionary<string, List<(MethodBuilder methodBuilder, string methodName, Type[] paramTypes, Type returnType)>> _methodBuilders;
         
         private ILGenerator? _il;
         private Dictionary<string, LocalBuilder>? _locals;
@@ -39,6 +40,7 @@ namespace OCompiler.CodeGeneration
             // Инициализируем словари
             _constructors = new Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>>();
             _methodSignatures = new Dictionary<string, List<(string, Type[], Type)>>();
+            _methodBuilders = new Dictionary<string, List<(MethodBuilder, string, Type[], Type)>>();
         }
 
         /// <summary>
@@ -183,6 +185,12 @@ namespace OCompiler.CodeGeneration
                 MethodAttributes.Public,
                 returnType,
                 paramTypes);
+
+            // Регистрируем MethodBuilder для последующего использования при вызовах
+            if (!_methodBuilders.ContainsKey(className))
+                _methodBuilders[className] = new List<(MethodBuilder, string, Type[], Type)>();
+
+            _methodBuilders[className].Add((methodBuilder, methodDecl.Header.Name, paramTypes, returnType));
 
             if (methodDecl.Body == null)
             {
@@ -699,7 +707,7 @@ namespace OCompiler.CodeGeneration
                     var method = targetType.GetMethod(
                         methodName,
                         BindingFlags.Public | BindingFlags.Instance,
-                        null,
+                        Type.DefaultBinder,
                         argTypes,
                         null);
 
@@ -1055,29 +1063,94 @@ namespace OCompiler.CodeGeneration
 
         private void GenerateUserMethodCall(ExpressionNode target, string methodName, List<ExpressionNode> arguments, Type targetType)
         {
-            var argTypes = arguments.Select(arg => InferExpressionType(arg)).ToArray();
-            
-            foreach (var arg in arguments)
+            Console.WriteLine($"**[ DEBUG ]       Calling user method {methodName} on type {targetType.Name}");
+
+            // Генерируем выражение target
+            GenerateExpression(target);
+    
+            // Для TypeBuilder типов — используем сохранённые сигнатуры методов
+            if (targetType is TypeBuilder targetTypeBuilder)
             {
-                GenerateExpression(arg);
+                // Ищем метод в зарегистрированных сигнатурах
+                var className = targetTypeBuilder.Name;
+                
+                if (_methodSignatures.TryGetValue(className, out var methodList))
+                {
+                    var argTypes = arguments.Select(a => _typeMapper.InferType(a)).ToArray();
+                    
+                    // Ищем подходящий метод по имени и сигнатуре
+                    var matchingMethod = methodList.FirstOrDefault(m => 
+                        m.methodName == methodName && 
+                        m.paramTypes.Length == argTypes.Length &&
+                        m.paramTypes.SequenceEqual(argTypes, new TypeComparer()));
+                    
+                    if (matchingMethod != default)
+                    {
+                        // Генерируем аргументы
+                        foreach (var arg in arguments)
+                        {
+                            GenerateExpression(arg);
+                        }
+                        Console.WriteLine($"**[ DEBUG ]       Found method signature: {methodName}({string.Join(", ", argTypes.Select(t => t.Name))})");
+
+                        // Попробуем найти MethodBuilder, зарегистрированный при создании метода
+                        if (_methodBuilders.TryGetValue(className, out var builders))
+                        {
+                            var found = builders.FirstOrDefault(b =>
+                                b.methodName == methodName &&
+                                b.paramTypes.Length == argTypes.Length &&
+                                b.paramTypes.SequenceEqual(argTypes, new TypeComparer()));
+
+                            if (found.methodBuilder != null)
+                            {
+                                _il!.Emit(OpCodes.Callvirt, found.methodBuilder);
+                                return;
+                            }
+                        }
+
+                        // Фоллбек: пытаться получить MethodInfo через BaseType (ретроградный путь)
+                        var baseMethod = targetTypeBuilder.BaseType?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance, Type.DefaultBinder, argTypes, null);
+                        if (baseMethod != null)
+                        {
+                            _il!.Emit(OpCodes.Callvirt, baseMethod);
+                            return;
+                        }
+
+                        throw new InvalidOperationException($"Method {methodName} not found in base type or registered builders");
+                    }
+                }
+                
+                throw new InvalidOperationException(
+                    $"Method '{methodName}' not found for type '{className}' with given argument types");
             }
-            
-            var method = targetType.GetMethod(
-                methodName,
-                BindingFlags.Public | BindingFlags.Instance,
-                null,
-                argTypes,
-                null);
+
+            // Для завершённых типов — используем обычную рефлексию
+            var argTypesCompleted = arguments.Select(a => _typeMapper.InferType(a)).ToArray();
+            var method = targetType.GetMethod(methodName, argTypesCompleted);
             
             if (method == null)
             {
                 throw new InvalidOperationException(
                     $"Method '{methodName}' not found in type '{targetType.Name}' " +
-                    $"with arguments ({string.Join(", ", argTypes.Select(t => t.Name))})");
+                    $"with arguments ({string.Join(", ", argTypesCompleted.Select(t => t.Name))})");
             }
-            
+
+            // Генерируем аргументы
+            foreach (var arg in arguments)
+            {
+                GenerateExpression(arg);
+            }
+
             _il!.Emit(OpCodes.Callvirt, method);
         }
+
+        // Вспомогательный класс для сравнения Type[]
+        private class TypeComparer : IEqualityComparer<Type>
+        {
+            public bool Equals(Type? x, Type? y) => x == y;
+            public int GetHashCode(Type obj) => obj.GetHashCode();
+        }
+
 
         private void GenerateMemberAccess(MemberAccessExpression memberAccess)
         {

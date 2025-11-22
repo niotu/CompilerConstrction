@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using OCompiler.CodeGeneration;
+using OCompiler.Runtime;
 using System.Reflection.Emit;  // НОВОЕ: Для работы со сборками
 
 namespace OCompiler;
@@ -91,6 +92,7 @@ public class Program
         Console.WriteLine("  --run                Execute generated assembly after compilation");
         Console.WriteLine("  --save-assembly <path>  Save generated assembly to file (.dll)");
         Console.WriteLine("  --emit-il            Print generated IL instructions (debug)");
+        Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (this() will be invoked)");
         
         Console.WriteLine();
         Console.WriteLine("** Test examples:");
@@ -231,6 +233,7 @@ public class Program
             
             Console.WriteLine("**[ OK ] AST optimizations completed.");
         }
+    
         
         // ============================================================
         // ФАЗА 5: ГЕНЕРАЦИЯ КОДА (НОВАЯ ФАЗА)
@@ -272,6 +275,14 @@ public class Program
 
             Console.WriteLine("**[ OK ] Code generation completed successfully!");
             var args = Environment.GetCommandLineArgs();
+            // Parse optional entry point class name
+            string? entryPoint = null;
+            int entryIdx = Array.IndexOf(args, "--entry-point");
+            if (entryIdx >= 0 && entryIdx + 1 < args.Length)
+            {
+                entryPoint = args[entryIdx + 1];
+                Console.WriteLine($"**[ INFO ] Entry point class requested: {entryPoint}");
+            }
             
             // Опционально: вывод сгенерированного IL
             if (args.Contains("--emit-il"))
@@ -293,43 +304,13 @@ public class Program
                 {
                     string outputPath = args[index + 1];
                     Console.WriteLine($"**[ INFO ] --save-assembly flag: {outputPath}");
-                    
-                    // Сборка находится в памяти, запускаем Program.Main через Reflection
                     try
                     {
-                        var assembly = codeGenerator.GetAssembly();
-                        var programType = assembly.GetType("Program");
-                        
-                        if (programType != null)
-                        {
-                            var mainMethod = programType.GetMethod("Main", 
-                                System.Reflection.BindingFlags.Public | 
-                                System.Reflection.BindingFlags.Static);
-                            
-                            if (mainMethod != null)
-                            {
-                                // Передаём имя класса точки входа
-                                string entryClassName = "Hello"; // или получи из args
-                                mainMethod.Invoke(null, new object[] { new string[] { entryClassName } });
-                                Console.WriteLine($"**[ OK ] Program executed with entry class: {entryClassName}");
-                            }
-                            else
-                            {
-                                Console.WriteLine("**[ ERR ] Main method not found in Program class");
-                            }
-                        }
-                        else
-                        {
-                            Console.WriteLine("**[ ERR ] Program class not found in assembly");
-                        }
+                        SaveAssemblyToFile(codeGenerator, outputPath);
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"**[ ERR ] Failed to execute assembly: {ex.Message}");
-                        if (ex.InnerException != null)
-                        {
-                            Console.WriteLine($"**[ ERR ] Inner exception: {ex.InnerException.Message}");
-                        }
+                        Console.WriteLine($"**[ ERR ] Failed to save assembly: {ex.Message}");
                     }
                 }
             }
@@ -338,7 +319,7 @@ public class Program
             // ИСПРАВЛЕНИЕ: Передаём завершённые типы вместо Assembly
             if (Environment.GetCommandLineArgs().Contains("--run"))
             {
-                ExecuteGeneratedCode(codeGenerator);
+                ExecuteGeneratedCode(codeGenerator, entryPoint, ast, hierarchy);
             }
         }
         catch (Exception ex)
@@ -437,7 +418,7 @@ public class Program
         }
 
         // НОВАЯ ФУНКЦИЯ: Выполнение сгенерированного кода
-        private static void ExecuteGeneratedCode(CodeGenerator codeGenerator)
+        private static void ExecuteGeneratedCode(CodeGenerator codeGenerator, string? entryPoint, ProgramNode ast, ClassHierarchy hierarchy)
         {
             Console.WriteLine("\n**[ INFO ] Executing generated code...");
             Console.WriteLine("========================================");
@@ -445,67 +426,274 @@ public class Program
             try
             {
                 var allTypes = codeGenerator.GetAllTypes();
-                
+
                 if (allTypes.Count == 0)
                 {
                     Console.WriteLine("**[ WARN ] No types found to execute");
                     return;
                 }
 
-                bool executed = false;
-                
-                foreach (var kvp in allTypes)
+                // If an explicit entry point class was provided, try to execute it
+                if (!string.IsNullOrEmpty(entryPoint))
                 {
-                    var type = kvp.Value;
-                    var typeName = kvp.Key;
-                    
-                    // Пропускаем встроенные типы
-                    if (typeName.StartsWith("<"))
-                        continue;
-                    
-                    var constructor = type.GetConstructor(Type.EmptyTypes);
-                    if (constructor != null)
+                    if (allTypes.TryGetValue(entryPoint, out var entryType))
                     {
-                        Console.WriteLine($"**[ INFO ] Creating instance of class: {typeName}");
-                        
+                        Console.WriteLine($"**[ INFO ] Creating instance of entry class: {entryPoint}");
                         try
                         {
-                            var instance = Activator.CreateInstance(type);
-                            Console.WriteLine($"**[ OK ] Instance created successfully!");
-                            
-                            // Опционально: вызов методов
-                            var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
-                            if (mainMethod != null)
+                            var ctorInfo = entryType.GetConstructor(Type.EmptyTypes);
+                            if (ctorInfo != null)
                             {
-                                Console.WriteLine($"**[ INFO ] Calling method: Main()");
-                                var result = mainMethod.Invoke(instance, null);
-                                if (result != null)
-                                {
-                                    Console.WriteLine($"**[ INFO ] Result: {result}");
-                                }
+                                var instance = ctorInfo.Invoke(null);
+                                Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via ConstructorInfo.Invoke).");
+                                Console.WriteLine($"**[ INFO ] Entry constructor (this()) executed.");
+                                return;
                             }
-                            
-                            executed = true;
-                            break;
+                            else
+                            {
+                                // Last resort: try Activator
+                                var instance = Activator.CreateInstance(entryType);
+                                Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via Activator).");
+                                return;
+                            }
+                        }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"**[ WARN ] Activator.CreateInstance failed for '{entryPoint}': {ex.Message}");
+                                if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+
+                                // Фоллбек 1: попробуем выполнить через assembly-type lookup
+                                try
+                                {
+                                    Console.WriteLine("**[ INFO ] Falling back to assembly-type lookup");
+                                    var asm = codeGenerator.GetAssembly();
+                                    var entryRuntimeType = asm.GetType(entryPoint!);
+                                    if (entryRuntimeType != null)
+                                    {
+                                        var inst = Activator.CreateInstance(entryRuntimeType);
+                                        Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created via assembly lookup.");
+                                        return;
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("**[ WARN ] Entry type not found via assembly.GetType().");
+                                    }
+                                }
+                                catch (Exception ex2)
+                                {
+                                    Console.WriteLine($"**[ DEBUG ] assembly lookup failed: {ex2.Message}");
+                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex2.StackTrace}");
+                                }
+
+                                // Фоллбек 2: запустить интерпретатор для конструктора
+                                try
+                                {
+                                    Console.WriteLine("**[ INFO ] Falling back to interpreter execution");
+                                    var interpreter = new Interpreter(ast, hierarchy);
+                                    interpreter.ExecuteConstructorByName(entryPoint!);
+                                    return;
+                                }
+                                catch (Exception iex)
+                                {
+                                    Console.WriteLine($"**[ ERR ] Interpreter fallback failed: {iex.Message}");
+                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{iex.StackTrace}");
+                                }
+
+                                return;
+                            }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"**[ ERR ] Entry point class '{entryPoint}' not found among generated types.");
+                        Console.WriteLine("**[ INFO ] Available types:");
+                        foreach (var kvp in allTypes)
+                        {
+                            Console.WriteLine($"  - {kvp.Key}");
+                        }
+                        return;
+                    }
+                }
+
+                // If no explicit entry point provided, prefer class named 'Main'
+                bool executed = false;
+                if (string.IsNullOrEmpty(entryPoint))
+                {
+                    if (allTypes.TryGetValue("Main", out var mainType))
+                    {
+                        Console.WriteLine("**[ INFO ] Defaulting entry point to class: Main");
+                        try
+                        {
+                            var ctor = mainType.GetConstructor(Type.EmptyTypes);
+                            if (ctor != null)
+                            {
+                                ctor.Invoke(null);
+                                Console.WriteLine("**[ OK ] Instance of 'Main' created (via ConstructorInfo.Invoke)");
+                                executed = true;
+                            }
+                            else
+                            {
+                                Activator.CreateInstance(mainType);
+                                Console.WriteLine("**[ OK ] Instance of 'Main' created (via Activator)");
+                                executed = true;
+                            }
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
+                            Console.WriteLine($"**[ WARN ] Creating Main instance failed: {ex.Message}");
                             if (Environment.GetCommandLineArgs().Contains("--debug"))
-                            {
                                 Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+
+                            // try assembly lookup
+                            try
+                            {
+                                Console.WriteLine("**[ INFO ] Falling back to assembly-type lookup for Main");
+                                var asm = codeGenerator.GetAssembly();
+                                var rt = asm.GetType("Main");
+                                if (rt != null)
+                                {
+                                    Activator.CreateInstance(rt);
+                                    Console.WriteLine("**[ OK ] Instance of 'Main' created via assembly lookup");
+                                    executed = true;
+                                }
+                            }
+                            catch (Exception ex2)
+                            {
+                                Console.WriteLine($"**[ DEBUG ] assembly lookup failed: {ex2.Message}");
+                                if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex2.StackTrace}");
+                            }
+
+                            // interpreter fallback
+                            if (!executed)
+                            {
+                                try
+                                {
+                                    Console.WriteLine("**[ INFO ] Falling back to interpreter execution for Main");
+                                    var interpreter = new Interpreter(ast, hierarchy);
+                                    interpreter.ExecuteConstructorByName("Main");
+                                    executed = true;
+                                }
+                                catch (Exception iex)
+                                {
+                                    Console.WriteLine($"**[ ERR ] Interpreter fallback failed for Main: {iex.Message}");
+                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{iex.StackTrace}");
+                                }
                             }
                         }
                     }
                 }
-                
+
+                // If still not executed, fallback to previous behavior (first type with parameterless ctor)
                 if (!executed)
                 {
-                    Console.WriteLine("**[ WARN ] No executable entry point found.");
-                    Console.WriteLine("**[ INFO ] Available types:");
+                    // No explicit entry point: fallback to first type with parameterless ctor
                     foreach (var kvp in allTypes)
                     {
-                        Console.WriteLine($"  - {kvp.Key}");
+                        var type = kvp.Value;
+                        var typeName = kvp.Key;
+
+                        // Пропускаем встроенные компиляторные типы
+                        if (typeName.StartsWith("<"))
+                            continue;
+
+                        var constructor = type.GetConstructor(Type.EmptyTypes);
+                        if (constructor != null)
+                        {
+                            Console.WriteLine($"**[ INFO ] Creating instance of class: {typeName}");
+                            try
+                            {
+                                object? instance = null;
+                                var ctor = type.GetConstructor(Type.EmptyTypes);
+                                if (ctor != null)
+                                {
+                                    instance = ctor.Invoke(null);
+                                    Console.WriteLine($"**[ OK ] Instance created successfully (via ConstructorInfo.Invoke)!");
+                                }
+                                else
+                                {
+                                    instance = Activator.CreateInstance(type);
+                                    Console.WriteLine($"**[ OK ] Instance created successfully (via Activator)!");
+                                }
+
+                                // Опционально: вызов метода Main() если есть
+                                var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
+                                if (mainMethod != null)
+                                {
+                                    Console.WriteLine($"**[ INFO ] Calling method: Main()");
+                                    var result = mainMethod.Invoke(instance, null);
+                                    if (result != null)
+                                    {
+                                        Console.WriteLine($"**[ INFO ] Result: {result}");
+                                    }
+                                }
+
+                                executed = true;
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
+                                if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                {
+                                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+                                }
+
+                                // Try assembly lookup as first fallback
+                                try
+                                {
+                                    Console.WriteLine("**[ INFO ] Falling back to assembly-type lookup");
+                                    var asm = codeGenerator.GetAssembly();
+                                    var entryRuntimeType = asm.GetType(typeName!);
+                                    if (entryRuntimeType != null)
+                                    {
+                                        var inst2 = Activator.CreateInstance(entryRuntimeType);
+                                        Console.WriteLine($"**[ OK ] Instance of '{typeName}' created via assembly lookup.");
+                                        executed = true;
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("**[ WARN ] Entry type not found via assembly.GetType().");
+                                    }
+                                }
+                                catch (Exception ex2)
+                                {
+                                    Console.WriteLine($"**[ DEBUG ] assembly lookup failed: {ex2.Message}");
+                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex2.StackTrace}");
+                                }
+
+                                // Final fallback: interpreter
+                                try
+                                {
+                                    Console.WriteLine("**[ INFO ] Falling back to interpreter execution");
+                                    var interpreter = new Interpreter(ast, hierarchy);
+                                    interpreter.ExecuteConstructorByName(typeName!);
+                                    executed = true;
+                                    break;
+                                }
+                                catch (Exception iex)
+                                {
+                                    Console.WriteLine($"**[ ERR ] Interpreter fallback failed: {iex.Message}");
+                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
+                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{iex.StackTrace}");
+                                }
+                            }
+                        }
+                    }
+
+                    if (!executed)
+                    {
+                        Console.WriteLine("**[ WARN ] No executable entry point found.");
+                        Console.WriteLine("**[ INFO ] Available types:");
+                        foreach (var kvp in allTypes)
+                        {
+                            Console.WriteLine($"  - {kvp.Key}");
+                        }
                     }
                 }
             }
@@ -801,7 +989,7 @@ private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
         // Создаем минимальные объявления для стандартных классов
         var standardClasses = new[]
         {
-            ("Class", null),
+            ("Class", ""),
             ("AnyValue", "Class"),
             ("Integer", "AnyValue"), 
             ("Real", "AnyValue"),
@@ -813,7 +1001,7 @@ private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
         
         foreach (var (className, baseClass) in standardClasses)
         {
-            var classDecl = new ClassDeclaration(className, null, baseClass, new List<MemberDeclaration>());
+            var classDecl = new ClassDeclaration(className, "", baseClass, new List<MemberDeclaration>());
             hierarchy.AddClass(classDecl);
         }
         
