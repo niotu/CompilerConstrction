@@ -59,6 +59,12 @@ namespace OCompiler.CodeGeneration
 
             /// <summary>Integer.toReal() - конвертация в Real</summary>
             public static double ToReal(int self) => (double)self;
+
+            /// <summary>Integer.Print() - вывести значение в консоль</summary>
+            public static void Print(int self)
+            {
+                Console.WriteLine(self);
+            }
         }
 
         // ============================================
@@ -103,6 +109,11 @@ namespace OCompiler.CodeGeneration
 
             /// <summary>Real.toInteger() - конвертация в Integer (округление вниз)</summary>
             public static int ToInteger(double self) => (int)self;
+            /// <summary>Real.Print() - вывести значение в консоль</summary>
+            public static void Print(double self)
+            {
+                Console.WriteLine(self);
+            }
         }
 
         // ============================================
@@ -124,6 +135,12 @@ namespace OCompiler.CodeGeneration
 
             /// <summary>Boolean.Equal(x) - равно</summary>
             public static bool Equal(bool self, bool other) => self == other;
+            
+            /// <summary>Boolean.Print() - вывести значение в консоль</summary>
+            public static void Print(bool self)
+            {
+                Console.WriteLine(self);
+            }
         }
 
         // ============================================

@@ -186,6 +186,23 @@ namespace OCompiler.CodeGeneration
         /// </summary>
         public Type? GetMethodReturnType(string oClassName, string methodName)
         {
+                        // Built-in types
+            if (oClassName == "Integer")
+            {
+                if (methodName == "Print") return typeof(void);
+                if (methodName == "toReal") return typeof(double);
+            }
+
+            if (oClassName == "Real")
+            {
+                if (methodName == "Print") return typeof(void);
+                if (methodName == "toInteger") return typeof(int);
+            }
+
+            if (oClassName == "Boolean")
+            {
+                if (methodName == "Print") return typeof(void);
+            }
             var methodDecl = _hierarchy.FindMethodInHierarchy(methodName, oClassName);
             if (methodDecl == null) return null;
 
