@@ -1,4 +1,4 @@
-class ComplexNesting is
+class Main is
     method NestedCalls(arr : Array[Integer]) : Real is
         var maxIndex : Integer(arr.Length().Minus(Integer(1)))
         var firstValue : Integer(arr.get(Integer(0)))
@@ -22,5 +22,10 @@ class ComplexNesting is
     end
 
     this() is
+        var a : Array[Integer](5)
     end
+
+    method main() is
+        NestedCalls(this.a)
+    end 
 end

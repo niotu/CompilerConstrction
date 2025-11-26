@@ -11,8 +11,12 @@ class Circle extends Shape is
     end
 end
 
-class PolyTest is
+class Main is
     this() is
+
+    end
+    
+    method main() is
         var s : Shape
         s := Circle
         var a : Real(s.Area())

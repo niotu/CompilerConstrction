@@ -1,5 +1,8 @@
-class ArraySquare is
+class Main is
     this() is
+    end
+
+    method main() is
         var a : Array[Integer](5)
         var i : Integer(0)
         while i.Less(a.Length) loop

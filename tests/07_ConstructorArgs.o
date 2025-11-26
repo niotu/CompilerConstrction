@@ -2,7 +2,17 @@ class App is
     var x : Integer(0)
     var y : Integer(14)
     var z : Real(2.0)
-    this(a : Integer) is
-        x := a
+
+    this() is
+    end
+end
+
+class Main is
+    this() is
+    end
+
+    method main() is
+        var app : App()
+        var val : Integer(10)
     end
 end

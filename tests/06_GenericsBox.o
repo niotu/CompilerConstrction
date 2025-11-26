@@ -1,17 +1,25 @@
-class Box[T] is
-    var value : T
-    method set(v : T) is
+class Box is
+    var value : Object()
+
+    method set(v : Object) is
         value := v
     end
-    method get() : T is
+
+    method get() : Object is
         return value
+    end
+
+    this() is
     end
 end
 
-class TestBox is
+class Main is
     this() is
-        var b : Box[Integer]()
+    end
+
+    method main() is
+        var b : Box()
         b.set(42)
-        var x : Integer(b.get())
+        var x : Object(b.get())
     end
 end

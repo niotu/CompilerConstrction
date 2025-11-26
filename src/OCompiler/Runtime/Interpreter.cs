@@ -52,6 +52,36 @@ namespace OCompiler.Runtime
             }
         }
 
+        public void ExecuteMethodByName(string className, string methodName)
+        {
+            var classDecl = _ast.Classes.FirstOrDefault(c => c.Name == className);
+            if (classDecl == null)
+            {
+                Console.WriteLine($"**[ WARN ] Interpreter: class '{className}' not found in AST");
+                return;
+            }
+
+            var method = classDecl.Members.OfType<MethodDeclaration>().FirstOrDefault(m => m.Header.Name == methodName);
+            if (method == null)
+            {
+                Console.WriteLine($"**[ WARN ] Interpreter: method '{methodName}' not found in class '{className}'");
+                return;
+            }
+
+            var instance = new ObjectInstance(className);
+            var env = new ExecutionEnvironment(instance);
+
+            try
+            {
+                var rv = ExecuteMethodBody(method.Body, env);
+                Console.WriteLine($"**[ OK ] Interpreter: executed method '{className}.{methodName}()'");
+            }
+            catch (ReturnSignal)
+            {
+                Console.WriteLine($"**[ OK ] Interpreter: method '{className}.{methodName}()' returned");
+            }
+        }
+
         private object? ExecuteMethodBody(MethodBodyNode body, ExecutionEnvironment env)
         {
             foreach (var elem in body.Elements)

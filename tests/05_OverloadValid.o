@@ -16,14 +16,17 @@ class Calc is
     end
 
     this() is
-
     end
 end
 
 class Main is
     this() is
+    end
+
+    method main() is
         var calc : Calc()
         var result : Real()
         result := calc.Add(3)
+        result := calc.getResult()
     end
 end

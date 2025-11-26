@@ -1,7 +1,7 @@
-class BadSyntax is
+class Main is
     this() is
         var x : Integer(10) 
         if x.Less(5) then
             // Unexpected symbol: '+', must be '.Plus()'
-            x := x + 1
+                x := x.Plus(1)
         

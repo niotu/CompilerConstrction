@@ -23,7 +23,7 @@ $ProjectDir = $ScriptDir
 $TestsDir = Join-Path $ProjectDir "tests"
 $ResultsDir = Join-Path $ProjectDir "test-results"
 $CompilerProject = Join-Path $ProjectDir "src\OCompiler\OCompiler.csproj"
-$BuildOutput = Join-Path $ProjectDir "src\OCompiler\bin\Debug\net8.0\OCompiler.exe"
+$BuildOutput = Join-Path $ProjectDir "src\OCompiler\bin\Debug\net9.0\OCompiler.exe"
 
 # Создаём папку для результатов, если её нет
 if (-not (Test-Path $ResultsDir)) {

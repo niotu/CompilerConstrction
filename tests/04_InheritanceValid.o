@@ -1,32 +1,33 @@
 class Animal is
     this() is
-
     end
+
     method Speak() : Integer is
         return 11111
     end
+
     method Walk() : Integer is
         return 101010
-        var a : Real()
     end
 end
 
-class Dog extends Animal is
-    this() is 
-
+class Dog : Animal is
+    this() is
     end
+
     method Speak() : Integer is
         return 22222
     end
 end
 
-class Test is
-    method Sum(): Integer is
-        return 987654321
-    end
+class Main is
     this() is
+    end
+
+    method main() is
         var a : Animal()
         var d : Dog()
         a.Speak()
+        d.Speak()
     end
 end

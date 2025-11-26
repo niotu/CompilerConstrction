@@ -1,5 +1,9 @@
-class Hello is
+class Main is
     this() is
         
+    end
+
+    method main() is
+
     end
 end

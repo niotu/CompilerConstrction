@@ -1,8 +1,12 @@
-class TypeMismatch is
+class Main is
     method GetInt() : Integer is
         return 3.14 // expected Integer, but got Real
     end
 
     this() is
+    end
+
+    method main() is
+
     end
 end

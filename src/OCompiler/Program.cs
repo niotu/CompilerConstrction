@@ -91,6 +91,7 @@ public class Program
         Console.WriteLine("  --no-codegen         Skip code generation phase");
         Console.WriteLine("  --run                Execute generated assembly after compilation");
         Console.WriteLine("  --save-assembly <path>  Save generated assembly to file (.dll)");
+        Console.WriteLine("  --emit-exe <path>    Save as executable (.exe) with entry point");
         Console.WriteLine("  --emit-il            Print generated IL instructions (debug)");
         Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (this() will be invoked)");
         
@@ -139,7 +140,7 @@ public class Program
         if (ast == null)
         {
             Console.WriteLine("**[ ERR ] Syntax analysis failed");
-            return;
+            Environment.Exit(1);
         }
         
         // ============================================================
@@ -296,7 +297,7 @@ public class Program
             }
 
             
-            // Опционально: сохранение сборки в файл
+            // Опционально: сохранение сборки в файл как DLL
             if (args.Contains("--save-assembly"))
             {
                 int index = Array.IndexOf(args, "--save-assembly");
@@ -306,11 +307,48 @@ public class Program
                     Console.WriteLine($"**[ INFO ] --save-assembly flag: {outputPath}");
                     try
                     {
-                        SaveAssemblyToFile(codeGenerator, outputPath);
+                        SaveAssemblyToFile(codeGenerator, outputPath, asExecutable: false);
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine($"**[ ERR ] Failed to save assembly: {ex.Message}");
+                    }
+                }
+            }
+
+            // Опционально: сохранение сборки как исполняемого файла .exe
+            if (args.Contains("--emit-exe"))
+            {
+                int index = Array.IndexOf(args, "--emit-exe");
+                if (index + 1 < args.Length)
+                {
+                    string outputPath = args[index + 1];
+                    Console.WriteLine($"**[ INFO ] --emit-exe flag: {outputPath}");
+                    try
+                    {
+                        // Генерируем точку входа перед сохранением
+                        codeGenerator.GenerateEntryPoint();
+                        
+                        // Переименовываем в .dll (так как .NET 9 PersistedAssemblyBuilder создаёт управляемые сборки)
+                        string dllPath = Path.ChangeExtension(outputPath, ".dll");
+                        SaveAssemblyToFile(codeGenerator, dllPath, asExecutable: true);
+                        
+                        // Создаём .runtimeconfig.json для запуска сборки
+                        string configPath = Path.ChangeExtension(outputPath, ".runtimeconfig.json");
+                        CreateRuntimeConfig(configPath);
+                        
+                        Console.WriteLine();
+                        Console.WriteLine("**[ INFO ] ========================================");
+                        Console.WriteLine("**[ INFO ] Executable created successfully!");
+                        Console.WriteLine("**[ INFO ] ========================================");
+                        Console.WriteLine($"**[ INFO ] To run the program, use:");
+                        Console.WriteLine($"**[ INFO ]   dotnet {Path.GetFileName(dllPath)}");
+                        Console.WriteLine($"**[ INFO ] Or reference it from C#/.NET code");
+                        Console.WriteLine("**[ INFO ] ========================================");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"**[ ERR ] Failed to save executable: {ex.Message}");
                     }
                 }
             }
@@ -442,20 +480,36 @@ public class Program
                         try
                         {
                             var ctorInfo = entryType.GetConstructor(Type.EmptyTypes);
+                            object? instance = null;
                             if (ctorInfo != null)
                             {
-                                var instance = ctorInfo.Invoke(null);
+                                instance = ctorInfo.Invoke(null);
                                 Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via ConstructorInfo.Invoke).");
-                                Console.WriteLine($"**[ INFO ] Entry constructor (this()) executed.");
-                                return;
                             }
                             else
                             {
                                 // Last resort: try Activator
-                                var instance = Activator.CreateInstance(entryType);
+                                instance = Activator.CreateInstance(entryType);
                                 Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via Activator).");
-                                return;
                             }
+
+                            // If an instance was created, try to call its 'main' method
+                            if (instance != null)
+                            {
+                                var mainMethod = entryType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                                if (mainMethod != null)
+                                {
+                                    // If static, instance can be null
+                                    var target = mainMethod.IsStatic ? null : instance;
+                                    mainMethod.Invoke(target, null);
+                                    Console.WriteLine($"**[ OK ] Called '{entryPoint}.main()' via reflection.");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"**[ WARN ] No 'main' method found on '{entryPoint}'; entry constructor executed.");
+                                }
+                            }
+                            return;
                         }
                             catch (Exception ex)
                             {
@@ -527,17 +581,34 @@ public class Program
                         try
                         {
                             var ctor = mainType.GetConstructor(Type.EmptyTypes);
+                            object? mainInstance = null;
                             if (ctor != null)
                             {
-                                ctor.Invoke(null);
+                                mainInstance = ctor.Invoke(null);
                                 Console.WriteLine("**[ OK ] Instance of 'Main' created (via ConstructorInfo.Invoke)");
                                 executed = true;
                             }
                             else
                             {
-                                Activator.CreateInstance(mainType);
+                                mainInstance = Activator.CreateInstance(mainType);
                                 Console.WriteLine("**[ OK ] Instance of 'Main' created (via Activator)");
                                 executed = true;
+                            }
+
+                            // Try to call 'main' method on the instance (or static if defined)
+                            if (mainInstance != null)
+                            {
+                                var mainMeth = mainType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                                if (mainMeth != null)
+                                {
+                                    var target = mainMeth.IsStatic ? null : mainInstance;
+                                    mainMeth.Invoke(target, null);
+                                    Console.WriteLine("**[ OK ] Called 'Main.main()' via reflection.");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("**[ WARN ] 'Main' has no method 'main()' to invoke.");
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -554,9 +625,17 @@ public class Program
                                 var rt = asm.GetType("Main");
                                 if (rt != null)
                                 {
-                                    Activator.CreateInstance(rt);
+                                    var inst = Activator.CreateInstance(rt);
                                     Console.WriteLine("**[ OK ] Instance of 'Main' created via assembly lookup");
                                     executed = true;
+
+                                    var mainMeth = rt.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                                    if (mainMeth != null)
+                                    {
+                                        var target = mainMeth.IsStatic ? null : inst;
+                                        mainMeth.Invoke(target, null);
+                                        Console.WriteLine("**[ OK ] Called 'Main.main()' via assembly lookup.");
+                                    }
                                 }
                             }
                             catch (Exception ex2)
@@ -573,7 +652,7 @@ public class Program
                                 {
                                     Console.WriteLine("**[ INFO ] Falling back to interpreter execution for Main");
                                     var interpreter = new Interpreter(ast, hierarchy);
-                                    interpreter.ExecuteConstructorByName("Main");
+                                    interpreter.ExecuteMethodByName("Main", "main");
                                     executed = true;
                                 }
                                 catch (Exception iex)
@@ -794,7 +873,7 @@ public class Program
             }
         }
 
-    private static void SaveAssemblyToFile(CodeGenerator codeGenerator, string outputPath)
+    private static void SaveAssemblyToFile(CodeGenerator codeGenerator, string outputPath, bool asExecutable = false)
     {
         Console.WriteLine($"**[ INFO ] Saving assembly to: {outputPath}");
         
@@ -805,7 +884,7 @@ public class Program
             // - .NET 9+: PersistedAssemblyBuilder
             // - Альтернатива: MetadataLoadContext или сторонние библиотеки
             
-            codeGenerator.SaveToFile(outputPath);
+            codeGenerator.SaveToFile(outputPath, asExecutable);
             Console.WriteLine($"**[ OK ] Assembly saved successfully!");
         }
         catch (NotImplementedException)
@@ -817,6 +896,29 @@ public class Program
         catch (Exception ex)
         {
             Console.WriteLine($"**[ ERR ] Failed to save assembly: {ex.Message}");
+        }
+    }
+
+    private static void CreateRuntimeConfig(string configPath)
+    {
+        try
+        {
+            string json = @"{
+  ""runtimeOptions"": {
+    ""tfm"": ""net9.0"",
+    ""framework"": {
+      ""name"": ""Microsoft.NETCore.App"",
+      ""version"": ""9.0.0""
+    }
+  }
+}";
+            
+            File.WriteAllText(configPath, json);
+            Console.WriteLine($"**[ OK ] Runtime config created: {configPath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"**[ WARN ] Failed to create runtime config: {ex.Message}");
         }
     }
 

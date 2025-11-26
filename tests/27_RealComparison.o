@@ -15,4 +15,8 @@ class RealComparisons is
 
     this() is
     end
+
+    method main() is 
+        CompareReals(3.1, 2.8)
+    end
 end

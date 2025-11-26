@@ -1,5 +1,9 @@
-class ListExample is
+class Main is
     this() is
+
+    end
+
+    method main() is
         var l : List[Integer]()
         l.append(1)
         l.append(2)
