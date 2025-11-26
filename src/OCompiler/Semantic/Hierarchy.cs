@@ -227,6 +227,7 @@ public class ClassHierarchy
         integer.Methods.Add("toReal", new BuiltInMethodInfo { ReturnType = "Real" });
         integer.Methods.Add("toBoolean", new BuiltInMethodInfo { ReturnType = "Boolean" });
         integer.Methods.Add("UnaryMinus", new BuiltInMethodInfo { ReturnType = "Integer" });
+        integer.Methods.Add("Print", new BuiltInMethodInfo { ReturnType = "void" });
         
         // Арифметические методы
         AddBinaryMethod(integer, "Plus", "Integer", "Integer");
@@ -275,6 +276,7 @@ public class ClassHierarchy
         // Методы Real
         real.Methods.Add("toInteger", new BuiltInMethodInfo { ReturnType = "Integer" });
         real.Methods.Add("UnaryMinus", new BuiltInMethodInfo { ReturnType = "Real" });
+        real.Methods.Add("Print", new BuiltInMethodInfo { ReturnType = "void" });
         
         // Арифметические методы
         AddBinaryMethod(real, "Plus", "Real", "Real");
@@ -318,6 +320,7 @@ public class ClassHierarchy
 
         // Методы Boolean
         boolean.Methods.Add("toInteger", new BuiltInMethodInfo { ReturnType = "Integer" });
+        boolean.Methods.Add("Print", new BuiltInMethodInfo { ReturnType = "void" });
         AddBinaryMethod(boolean, "Or", "Boolean", "Boolean");
         AddBinaryMethod(boolean, "And", "Boolean", "Boolean");
         AddBinaryMethod(boolean, "Xor", "Boolean", "Boolean");

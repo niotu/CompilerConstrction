@@ -16,3 +16,10 @@ class Main is
         var val : Integer(10)
     end
 end
+
+class Main is
+    this() is
+        var c : Integer(5)
+        c.Print()
+    end
+end
