@@ -6,3 +6,10 @@ class App is
         x := a
     end
 end
+
+class Main is
+    this() is
+        var c : Integer(5)
+        c.Print()
+    end
+end

@@ -263,7 +263,7 @@ public class Program
             string assemblyName = Path.GetFileNameWithoutExtension(sourceFileName);
             
             // Создаем генератор кода
-            var codeGenerator = new CodeGenerator(assemblyName, hierarchy);
+            var codeGenerator = new CodeGenerator(assemblyName);
             // Генерируем сборку
             Assembly generatedAssembly = codeGenerator.Generate(ast);
 
@@ -288,6 +288,68 @@ public class Program
             if (args.Contains("--emit-il"))
             {
                 PrintILAsText(codeGenerator);
+            }
+
+            // --emit-pe removed (Console PoC) per user request.
+
+            // Emit a persisted PE that calls BuiltinTypes.OInteger.Print with a test value
+            if (args.Contains("--emit-pe-print"))
+            {
+                int idx = Array.IndexOf(args, "--emit-pe-print");
+                if (idx + 1 < args.Length)
+                {
+                    var outPath = args[idx + 1];
+                    int value = 5;
+                    if (idx + 2 < args.Length && int.TryParse(args[idx + 2], out var v))
+                        value = v;
+
+                    Console.WriteLine($"**[ INFO ] --emit-pe-print requested: {outPath} (value={value})");
+                    try
+                    {
+                        PeEmitter.EmitBuiltinPrintPoC(outPath, value);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"**[ ERR ] --emit-pe-print failed: {ex.Message}");
+                    }
+                }
+            }
+
+            // SRM emitter hooks (placeholder) — currently delegate to SrmEmitter
+            if (args.Contains("--emit-srm"))
+            {
+                int idx2 = Array.IndexOf(args, "--emit-srm");
+                if (idx2 + 1 < args.Length)
+                {
+                    var outPath = args[idx2 + 1];
+                    Console.WriteLine($"**[ INFO ] --emit-srm requested: {outPath}");
+                    try
+                    {
+                        SrmEmitter.EmitConsolePoC(outPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"**[ ERR ] --emit-srm failed: {ex.Message}");
+                    }
+                }
+            }
+
+            if (args.Contains("--emit-srm-print"))
+            {
+                int idx3 = Array.IndexOf(args, "--emit-srm-print");
+                if (idx3 + 1 < args.Length)
+                {
+                    var outPath = args[idx3 + 1];
+                    Console.WriteLine($"**[ INFO ] --emit-srm-print requested: {outPath} (AST mode)");
+                    try
+                    {
+                        SrmEmitter.EmitBuiltinPrintPoC(outPath, ast);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"**[ ERR ] --emit-srm-print failed: {ex.Message}");
+                    }
+                }
             }
 
             if (args.Contains("--emit-assembly"))
@@ -402,9 +464,29 @@ public class Program
                         method.ReturnType.Name.ToLower(),
                         paramStr);
                     
-                    ilEmitter.EmitInstruction(".maxstack 8");
-                    ilEmitter.EmitReturn();
-                    
+                    // Try to disassemble real IL from MethodBody when available
+                    try
+                    {
+                        var body = method.GetMethodBody();
+                        if (body == null)
+                        {
+                            ilEmitter.EmitInstruction(".maxstack 8");
+                            ilEmitter.EmitReturn();
+                        }
+                        else
+                        {
+                            var ilBytes = body.GetILAsByteArray();
+                            ilEmitter.EmitInstruction($".maxstack {Math.Max(body.MaxStackSize, 8)}");
+                            DisassembleIL(method, ilBytes, ilEmitter);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Some runtime MethodInfos (e.g. dynamic types) may not expose method body; fallback to stub
+                        ilEmitter.EmitInstruction(".maxstack 8");
+                        ilEmitter.EmitReturn();
+                    }
+
                     ilEmitter.EmitMethodEnd();
                 }
                 
@@ -415,6 +497,111 @@ public class Program
             Console.WriteLine("========================================");
             Console.WriteLine(ilEmitter.GetILCode());
             Console.WriteLine("========================================");
+        }
+
+        private static readonly Dictionary<ushort, OpCode> _opcodeMap = BuildOpCodeMap();
+
+        private static Dictionary<ushort, OpCode> BuildOpCodeMap()
+        {
+            var map = new Dictionary<ushort, OpCode>();
+            var fields = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static);
+            foreach (var f in fields)
+            {
+                if (f.GetValue(null) is OpCode op)
+                {
+                    map[(ushort)op.Value] = op;
+                }
+            }
+            return map;
+        }
+
+        private static void DisassembleIL(System.Reflection.MethodInfo method, byte[] ilBytes, ILEmitter ilEmitter)
+        {
+            if (ilBytes == null || ilBytes.Length == 0)
+            {
+                ilEmitter.EmitInstruction("  // (no IL)");
+                return;
+            }
+
+            int i = 0;
+            while (i < ilBytes.Length)
+            {
+                byte b = ilBytes[i++];
+                ushort codeValue;
+                if (b == 0xFE)
+                {
+                    byte b2 = ilBytes[i++];
+                    codeValue = (ushort)(0xFE00 | b2);
+                }
+                else
+                {
+                    codeValue = b;
+                }
+
+                if (!_opcodeMap.TryGetValue(codeValue, out var op))
+                {
+                    ilEmitter.EmitInstruction($"// unknown opcode 0x{codeValue:X}");
+                    continue;
+                }
+
+                string operandText = string.Empty;
+                switch (op.OperandType)
+                {
+                    case OperandType.InlineNone:
+                        break;
+                    case OperandType.ShortInlineI:
+                        sbyte sval = (sbyte)ilBytes[i++];
+                        operandText = sval.ToString();
+                        break;
+                    case OperandType.ShortInlineVar:
+                        byte varIndex = ilBytes[i++];
+                        operandText = varIndex.ToString();
+                        break;
+                    case OperandType.InlineVar:
+                        ushort vindex = BitConverter.ToUInt16(ilBytes, i);
+                        i += 2;
+                        operandText = vindex.ToString();
+                        break;
+                    case OperandType.InlineI:
+                        int ival = BitConverter.ToInt32(ilBytes, i);
+                        i += 4;
+                        operandText = ival.ToString();
+                        break;
+                    case OperandType.ShortInlineR:
+                        float fval = BitConverter.ToSingle(ilBytes, i);
+                        i += 4;
+                        operandText = fval.ToString();
+                        break;
+                    case OperandType.InlineR:
+                        double dval = BitConverter.ToDouble(ilBytes, i);
+                        i += 8;
+                        operandText = dval.ToString();
+                        break;
+                    case OperandType.InlineMethod:
+                    case OperandType.InlineField:
+                    case OperandType.InlineTok:
+                    case OperandType.InlineType:
+                        int token = BitConverter.ToInt32(ilBytes, i);
+                        i += 4;
+                        operandText = token.ToString();
+                        break;
+                    case OperandType.ShortInlineBrTarget:
+                        sbyte off = (sbyte)ilBytes[i++];
+                        operandText = (i + off).ToString();
+                        break;
+                    case OperandType.InlineBrTarget:
+                        int jmp = BitConverter.ToInt32(ilBytes, i);
+                        i += 4;
+                        operandText = (i + jmp).ToString();
+                        break;
+                    default:
+                        // Fallback for other operand types
+                        break;
+                }
+
+                var line = op.Name + (string.IsNullOrEmpty(operandText) ? "" : " " + operandText);
+                ilEmitter.EmitInstruction("  " + line);
+            }
         }
 
         // НОВАЯ ФУНКЦИЯ: Выполнение сгенерированного кода

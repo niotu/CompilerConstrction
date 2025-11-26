@@ -8,11 +8,6 @@ using OCompiler.Semantic;
 using System.IO;
 
 
-#if NET9_0_OR_GREATER
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
-#endif
-
 namespace OCompiler.CodeGeneration
 {
     /// <summary>
@@ -24,16 +19,12 @@ namespace OCompiler.CodeGeneration
         private readonly AssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
         private readonly TypeMapper _typeMapper;
-        private readonly MethodGenerator _methodGenerator;
         private readonly Dictionary<string, TypeBuilder> _typeBuilders;
         private readonly Dictionary<string, Type> _completedTypes;
-        private readonly ClassHierarchy _hierarchy;
-        private readonly string _assemblyName;
+        private MethodGenerator _methodGenerator;
 
-        public CodeGenerator(string assemblyName, ClassHierarchy hierarchy)
+        public CodeGenerator(string assemblyName)
         {
-            _assemblyName = assemblyName;
-            _hierarchy = hierarchy;
             _typeBuilders = new Dictionary<string, TypeBuilder>();
             _completedTypes = new Dictionary<string, Type>();
 
@@ -53,8 +44,9 @@ namespace OCompiler.CodeGeneration
             #endif
 
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(assemblyName);
-            _typeMapper = new TypeMapper(_moduleBuilder, _hierarchy);
-            _methodGenerator = new MethodGenerator(_typeMapper, _hierarchy);
+            _typeMapper = new TypeMapper(_moduleBuilder, new ClassHierarchy());
+            _methodGenerator = new MethodGenerator(_typeMapper);
+            
 
             Console.WriteLine($"**[ INFO ] Code generator initialized for assembly: {assemblyName}");
         }
@@ -95,7 +87,7 @@ namespace OCompiler.CodeGeneration
                 {
                     // Use CreateTypeInfo().AsType() to obtain a runtime Type usable with Activator
                     var completedType = kvp.Value.CreateTypeInfo().AsType();
-                    _completedTypes[kvp.Key] = completedType!;
+                    _completedTypes[kvp.Key] = completedType;
                     Console.WriteLine($"**[ DEBUG ]   Finalized type: {kvp.Key}");
                 }
                 catch (Exception ex)
@@ -143,9 +135,6 @@ namespace OCompiler.CodeGeneration
                     classDecl.Name,
                     TypeAttributes.Public | TypeAttributes.Class,
                     baseType);
-
-                var genericParams = typeBuilder.DefineGenericParameters(classDecl.GenericParameter);
-                Console.WriteLine($"**[ DEBUG ]   Declared generic type: {classDecl.Name}<{classDecl.GenericParameter}>");
             }
             else
             {
@@ -326,13 +315,28 @@ namespace OCompiler.CodeGeneration
                 // В .NET 9 PersistedAssemblyBuilder имеет метод Save
                 var persistedBuilder = (PersistedAssemblyBuilder)_assemblyBuilder;
                 
-                using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write);
-                
-                // Простой метод сохранения
-                persistedBuilder.Save(stream);
+                // Ensure directory exists
+                var dir = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
 
+                using (var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    // Save persisted assembly to the stream
+                    persistedBuilder.Save(stream);
+
+                    // Ensure all buffered data is written to disk
+                    stream.Flush();
+                }
+
+                var fileInfo = new FileInfo(outputPath);
                 Console.WriteLine($"**[ OK ] Assembly saved successfully: {outputPath}");
-                Console.WriteLine($"**[ INFO ] File size: {new FileInfo(outputPath).Length} bytes");
+                Console.WriteLine($"**[ INFO ] File size: {fileInfo.Length} bytes");
+                if (fileInfo.Length == 0)
+                {
+                    Console.WriteLine("**[ WARN ] Saved file size is 0 bytes — PersistedAssemblyBuilder.Save may be a no-op on this runtime.");
+                    Console.WriteLine("**[ INFO ] Try running with --run or use an alternative emitter (emit-csharp or PE emitter).");
+                }
             }
             catch (NotSupportedException ex)
             {

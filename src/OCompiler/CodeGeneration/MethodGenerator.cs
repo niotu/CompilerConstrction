@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using OCompiler.Parser;
-using OCompiler.Semantic;
 
 namespace OCompiler.CodeGeneration
 {
@@ -14,8 +13,6 @@ namespace OCompiler.CodeGeneration
     public class MethodGenerator
     {
         private readonly TypeMapper _typeMapper;
-        private readonly ClassHierarchy _hierarchy;
-        private readonly CodeGenerator? _codeGenerator;
         private readonly ProgramNode? _programAst;
         
         // Словари для кэширования информации о методах и конструкторах
@@ -30,11 +27,9 @@ namespace OCompiler.CodeGeneration
         private Dictionary<string, int>? _parameters;
         private Dictionary<string, Type>? _parameterTypes;
 
-        public MethodGenerator(TypeMapper typeMapper, ClassHierarchy hierarchy, CodeGenerator? codeGenerator = null, ProgramNode? programAst = null)
+        public MethodGenerator(TypeMapper typeMapper, ProgramNode? programAst = null)
         {
             _typeMapper = typeMapper;
-            _hierarchy = hierarchy;
-            _codeGenerator = codeGenerator;
             _programAst = programAst;
             
             // Инициализируем словари
@@ -150,10 +145,7 @@ namespace OCompiler.CodeGeneration
             }
 
             // Генерация тела конструктора
-            if (ctorDecl.Body != null)
-            {
-                GenerateMethodBodyContent(ctorDecl.Body);
-            }
+            GenerateMethodBodyContent(ctorDecl.Body);
 
             _il.Emit(OpCodes.Ret);
 
@@ -192,11 +184,12 @@ namespace OCompiler.CodeGeneration
 
             _methodBuilders[className].Add((methodBuilder, methodDecl.Header.Name, paramTypes, returnType));
 
-            if (methodDecl.Body == null)
-            {
-                Console.WriteLine($"**[ DEBUG ]   Method (forward): {methodDecl.Header.Name}");
-                return;
-            }
+            // Удаляем избыточные проверки nullable
+            // if (methodDecl.Body == null)
+            // {
+            //     Console.WriteLine($"**[ DEBUG ]   Method (forward): {methodDecl.Header.Name}");
+            //     return;
+            // }
 
             _il = methodBuilder.GetILGenerator();
             _locals = new Dictionary<string, LocalBuilder>();
@@ -255,10 +248,7 @@ namespace OCompiler.CodeGeneration
                     break;
 
                 case ReturnStatement returnStmt:
-                    if (returnStmt.Expression != null)
-                    {
-                        GenerateExpression(returnStmt.Expression);
-                    }
+                    GenerateExpression(returnStmt.Expression);
                     _il!.Emit(OpCodes.Ret);
                     break;
 
@@ -537,7 +527,7 @@ namespace OCompiler.CodeGeneration
                 {
                     var pseudoConstructor = new ConstructorInvocation(
                         typeName,
-                        null,
+                        "", // Заменяем null на пустую строку
                         funcCall.Arguments
                     );
                     GenerateConstructorInvocation(pseudoConstructor);
@@ -672,6 +662,7 @@ namespace OCompiler.CodeGeneration
                         "Plus" or "Minus" or "Mult" or "Div" or "Rem" or "UnaryMinus" => typeof(int),
                         "Less" or "LessEqual" or "Greater" or "GreaterEqual" or "Equal" => typeof(bool),
                         "toReal" => typeof(double),
+                        "Print" => typeof(void),
                         _ => typeof(object)
                     };
                 }
@@ -683,6 +674,7 @@ namespace OCompiler.CodeGeneration
                         "Plus" or "Minus" or "Mult" or "Div" or "UnaryMinus" => typeof(double),
                         "Less" or "LessEqual" or "Greater" or "GreaterEqual" or "Equal" => typeof(bool),
                         "toInteger" => typeof(int),
+                        "Print" => typeof(void),
                         _ => typeof(object)
                     };
                 }
@@ -692,6 +684,7 @@ namespace OCompiler.CodeGeneration
                     return methodName switch
                     {
                         "And" or "Or" or "Xor" or "Not" or "Equal" => typeof(bool),
+                        "Print" => typeof(void),
                         _ => typeof(object)
                     };
                 }
@@ -875,6 +868,11 @@ namespace OCompiler.CodeGeneration
                     _il!.Emit(OpCodes.Call, integerType.GetMethod("ToReal")!);
                     break;
 
+                case "Print":
+                    if (arguments.Count != 0) throw new InvalidOperationException("Print does not accept arguments");
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Print")!);
+                    break;
+
                 default:
                     throw new NotImplementedException($"Integer method '{methodName}' not implemented");
             }
@@ -939,6 +937,11 @@ namespace OCompiler.CodeGeneration
                     _il!.Emit(OpCodes.Call, realType.GetMethod("ToInteger")!);
                     break;
 
+                case "Print":
+                    if (arguments.Count != 0) throw new InvalidOperationException("Print does not accept arguments");
+                    _il!.Emit(OpCodes.Call, realType.GetMethod("Print")!);
+                    break;
+
                 default:
                     throw new NotImplementedException($"Real method '{methodName}' not implemented");
             }
@@ -972,6 +975,11 @@ namespace OCompiler.CodeGeneration
                 case "Equal":
                     GenerateExpression(arguments[0]);
                     _il!.Emit(OpCodes.Call, boolType.GetMethod("Equal")!);
+                    break;
+
+                case "Print":
+                    if (arguments.Count != 0) throw new InvalidOperationException("Print does not accept arguments");
+                    _il!.Emit(OpCodes.Call, boolType.GetMethod("Print")!);
                     break;
 
                 default:
@@ -1124,7 +1132,7 @@ namespace OCompiler.CodeGeneration
                     $"Method '{methodName}' not found for type '{className}' with given argument types");
             }
 
-            // Для завершённых типов — используем обычную рефлексию
+            // Для завершённых типов — используем обычную рефлексия
             var argTypesCompleted = arguments.Select(a => _typeMapper.InferType(a)).ToArray();
             var method = targetType.GetMethod(methodName, argTypesCompleted);
             
@@ -1226,8 +1234,8 @@ namespace OCompiler.CodeGeneration
             _il.Emit(OpCodes.Br, endLabel);
 
             _il.MarkLabel(elseLabel);
-            if (ifStmt.ElseBody != null)
             {
+                // Исправляем вызов GenerateMethodBodyContent
                 GenerateMethodBodyContent(ifStmt.ElseBody.Body);
             }
 
