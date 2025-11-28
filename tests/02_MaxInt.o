@@ -2,17 +2,6 @@ class Main is
     this() is
     end
 
-    method main() is
-        var arr : Array[Integer](5)
-        arr.set(0, 3)
-        arr.set(1, 7)
-        arr.set(2, 2)
-        arr.set(3, 9)
-        arr.set(4, 1)
-        var max : Integer(0)
-        max := Max(arr)
-    end
-
     method Max(arr : Array[Integer]) : Integer is
         var i : Integer(0)
         var max : Integer(arr.get(0))
@@ -23,5 +12,17 @@ class Main is
             i := i.Plus(1)
         end
         return max
+    end
+
+    method main() is
+        var arr : Array[Integer](5)
+        arr.set(0, 3)
+        arr.set(1, 7)
+        arr.set(2, 2)
+        arr.set(3, 9)
+        arr.set(4, 1)
+        var max : Integer(0)
+        max := Max(arr)
+        max.Print()
     end
 end

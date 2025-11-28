@@ -143,16 +143,58 @@ namespace OCompiler.CodeGeneration
             // Get the user's Main class type
             var mainClassType = _completedTypes["Main"];
 
-            // IL: new Main() -> calls constructor (this())
-            var mainConstructor = mainClassType.GetConstructor(Type.EmptyTypes);
-            if (mainConstructor != null)
+            // Try to find a method named "main" (case-sensitive) or "Main"
+            const BindingFlags mainMethodFlags =
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+            var mainMethodInfo = mainClassType.GetMethod("main", mainMethodFlags)
+                                 ?? mainClassType.GetMethod("Main", mainMethodFlags);
+
+            if (mainMethodInfo == null)
             {
-                il.Emit(OpCodes.Newobj, mainConstructor);
-                il.Emit(OpCodes.Pop); // Discard the instance
+                Console.WriteLine("**[ WARN ] No 'main' method found in class Main; entry point will be empty");
             }
             else
             {
-                Console.WriteLine("**[ WARN ] Could not find parameterless constructor for Main");
+                var parameters = mainMethodInfo.GetParameters();
+                bool acceptsArgs = parameters.Length == 1 && parameters[0].ParameterType == typeof(string[]);
+                if (parameters.Length > 0 && !acceptsArgs)
+                {
+                    Console.WriteLine("**[ WARN ] Main.main has unsupported signature. Expected () or (string[]). Entry point will not invoke it.");
+                }
+                else
+                {
+                    if (mainMethodInfo.IsStatic)
+                    {
+                        if (acceptsArgs)
+                        {
+                            // Pass through CLI args
+                            il.Emit(OpCodes.Ldarg_0);
+                        }
+                        mainMethodInfo = mainMethodInfo; // just for clarity
+                        il.Emit(OpCodes.Call, mainMethodInfo);
+                    }
+                    else
+                    {
+                        // Need an instance of Main
+                        var mainConstructor = mainClassType.GetConstructor(Type.EmptyTypes);
+                        if (mainConstructor == null)
+                        {
+                            Console.WriteLine("**[ ERR ] Instance method Main.main requires parameterless constructor; entry point cannot be generated");
+                        }
+                        else
+                        {
+                            var mainLocal = il.DeclareLocal(mainClassType);
+                            il.Emit(OpCodes.Newobj, mainConstructor);
+                            il.Emit(OpCodes.Stloc, mainLocal);
+                            il.Emit(OpCodes.Ldloc, mainLocal);
+                            if (acceptsArgs)
+                            {
+                                il.Emit(OpCodes.Ldarg_0);
+                            }
+                            il.Emit(OpCodes.Callvirt, mainMethodInfo);
+                        }
+                    }
+                }
             }
 
             il.Emit(OpCodes.Ret);

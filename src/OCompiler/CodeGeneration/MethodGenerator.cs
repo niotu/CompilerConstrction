@@ -29,6 +29,7 @@ namespace OCompiler.CodeGeneration
         private Dictionary<string, FieldBuilder>? _fields;
         private Dictionary<string, int>? _parameters;
         private Dictionary<string, Type>? _parameterTypes;
+        private string? _currentClassName;  // Track which class we're currently generating
 
         public MethodGenerator(TypeMapper typeMapper, ClassHierarchy hierarchy, CodeGenerator? codeGenerator = null, ProgramNode? programAst = null)
         {
@@ -41,6 +42,18 @@ namespace OCompiler.CodeGeneration
             _constructors = new Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>>();
             _methodSignatures = new Dictionary<string, List<(string, Type[], Type)>>();
             _methodBuilders = new Dictionary<string, List<(MethodBuilder, string, Type[], Type)>>();
+        }
+
+        /// <summary>
+        /// Helper to reconstruct full type name from ClassNameNode (handles generic types like Array[Integer])
+        /// </summary>
+        private string BuildTypeName(ClassNameNode typeNode)
+        {
+            if (string.IsNullOrEmpty(typeNode.GenericParameter))
+            {
+                return typeNode.Name;
+            }
+            return $"{typeNode.Name}[{typeNode.GenericParameter}]";
         }
 
         /// <summary>
@@ -81,8 +94,9 @@ namespace OCompiler.CodeGeneration
             ClassDeclaration classDecl,
             Dictionary<string, FieldBuilder> fields)
         {
+            _currentClassName = classDecl.Name;  // Track current class
             var paramTypes = ctorDecl.Parameters
-                .Select(p => _typeMapper.GetNetType(p.Type.Name))
+                .Select(p => _typeMapper.GetNetType(BuildTypeName(p.Type)))
                 .ToArray();
 
             var ctorBuilder = typeBuilder.DefineConstructor(
@@ -169,12 +183,13 @@ namespace OCompiler.CodeGeneration
             Dictionary<string, FieldBuilder> fields,
             string className)
         {
+            _currentClassName = className;  // Track current class
             Type returnType = string.IsNullOrEmpty(methodDecl.Header.ReturnType)
                 ? typeof(void)
                 : _typeMapper.GetNetType(methodDecl.Header.ReturnType);
 
             var paramTypes = methodDecl.Header.Parameters
-                .Select(p => _typeMapper.GetNetType(p.Type.Name))
+                .Select(p => _typeMapper.GetNetType(BuildTypeName(p.Type)))
                 .ToArray();
 
             // Регистрируем метод
@@ -537,11 +552,44 @@ namespace OCompiler.CodeGeneration
                 {
                     var pseudoConstructor = new ConstructorInvocation(
                         typeName,
-                        null,
+                        string.Empty,
                         funcCall.Arguments
                     );
                     GenerateConstructorInvocation(pseudoConstructor);
                     return;
+                }
+
+                // СЛУЧАЙ 1b: Вызов метода того же класса (неявный this)
+                if (_currentClassName != null && _methodSignatures.ContainsKey(_currentClassName))
+                {
+                    var methods = _methodSignatures[_currentClassName];
+                    var matchingMethod = methods.FirstOrDefault(m => m.methodName == typeName);
+                    if (matchingMethod.methodName != null)
+                    {
+                        // Это метод текущего класса, вызываем через this
+                        Console.WriteLine($"**[ DEBUG ]       Calling {typeName} on implicit this");
+                        _il?.Emit(OpCodes.Ldarg_0);  // this
+                        
+                        // Генерируем аргументы
+                        foreach (var arg in funcCall.Arguments)
+                        {
+                            GenerateExpression(arg);
+                        }
+                        
+                        // Ищем MethodBuilder для вызова
+                        if (_methodBuilders.ContainsKey(_currentClassName))
+                        {
+                            var methodBuilders = _methodBuilders[_currentClassName];
+                            var methodBuilder = methodBuilders.FirstOrDefault(m => m.methodName == typeName);
+                            if (methodBuilder.methodBuilder != null)
+                            {
+                                _il?.Emit(OpCodes.Callvirt, methodBuilder.methodBuilder);
+                                return;
+                            }
+                        }
+                        
+                        throw new InvalidOperationException($"MethodBuilder not found for {_currentClassName}.{typeName}");
+                    }
                 }
                 
                 throw new NotImplementedException(
@@ -695,6 +743,34 @@ namespace OCompiler.CodeGeneration
                     {
                         "And" or "Or" or "Xor" or "Not" or "Equal" => typeof(bool),
                         "Print" => typeof(void),
+                        _ => typeof(object)
+                    };
+                }
+
+                // Handle Array method calls
+                if (targetType.IsArray)
+                {
+                    var elementType = targetType.GetElementType()!;
+                    return methodName switch
+                    {
+                        "get" => elementType,
+                        "set" => typeof(void),
+                        "Length" => typeof(int),
+                        "toList" => typeof(System.Collections.Generic.List<>).MakeGenericType(elementType),
+                        _ => typeof(object)
+                    };
+                }
+
+                // Handle List method calls
+                if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(System.Collections.Generic.List<>))
+                {
+                    var elementType = targetType.GetGenericArguments()[0];
+                    return methodName switch
+                    {
+                        "append" => typeof(void),
+                        "head" => elementType,
+                        "tail" => targetType,
+                        "isEmpty" => typeof(bool),
                         _ => typeof(object)
                     };
                 }

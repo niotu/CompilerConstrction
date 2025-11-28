@@ -307,7 +307,14 @@ public class Program
                     Console.WriteLine($"**[ INFO ] --save-assembly flag: {outputPath}");
                     try
                     {
-                        SaveAssemblyToFile(codeGenerator, outputPath, asExecutable: false);
+                        // Always emit into a fresh 'build' directory
+                        EnsureFreshBuildDir();
+                        string buildDll = Path.Combine(Directory.GetCurrentDirectory(), "build", "output.dll");
+                        SaveAssemblyToFile(codeGenerator, buildDll, asExecutable: false);
+                        // Create runtimeconfig alongside output
+                        CreateRuntimeConfig(Path.Combine(Directory.GetCurrentDirectory(), "build", "output.runtimeconfig.json"));
+                        // Try to copy referenced assemblies into the build folder
+                        CopyReferencedAssemblies(generatedAssembly);
                     }
                     catch (Exception ex)
                     {
@@ -328,14 +335,17 @@ public class Program
                     {
                         // Генерируем точку входа перед сохранением
                         codeGenerator.GenerateEntryPoint();
-                        
-                        // Переименовываем в .dll (так как .NET 9 PersistedAssemblyBuilder создаёт управляемые сборки)
-                        string dllPath = Path.ChangeExtension(outputPath, ".dll");
+                        // Emit into a fresh 'build' directory with a stable name 'output.dll'
+                        EnsureFreshBuildDir();
+                        string dllPath = Path.Combine(Directory.GetCurrentDirectory(), "build", "output.dll");
                         SaveAssemblyToFile(codeGenerator, dllPath, asExecutable: true);
-                        
-                        // Создаём .runtimeconfig.json для запуска сборки
-                        string configPath = Path.ChangeExtension(outputPath, ".runtimeconfig.json");
+
+                        // Create runtimeconfig.json next to the DLL
+                        string configPath = Path.Combine(Directory.GetCurrentDirectory(), "build", "output.runtimeconfig.json");
                         CreateRuntimeConfig(configPath);
+
+                        // Try to copy referenced assemblies into the build folder
+                        CopyReferencedAssemblies(generatedAssembly);
                         
                         Console.WriteLine();
                         Console.WriteLine("**[ INFO ] ========================================");
@@ -919,6 +929,85 @@ public class Program
         catch (Exception ex)
         {
             Console.WriteLine($"**[ WARN ] Failed to create runtime config: {ex.Message}");
+        }
+    }
+
+    // Ensure a fresh build directory exists at './build' (delete if present)
+    private static void EnsureFreshBuildDir()
+    {
+        try
+        {
+            var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "build");
+            if (Directory.Exists(buildDir))
+            {
+                Directory.Delete(buildDir, true);
+            }
+            Directory.CreateDirectory(buildDir);
+            Console.WriteLine($"**[ OK ] Build directory prepared: {buildDir}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"**[ WARN ] Could not prepare build directory: {ex.Message}");
+        }
+    }
+
+    // Try to copy referenced assemblies with a physical location into the build folder
+    private static void CopyReferencedAssemblies(Assembly? assembly)
+    {
+        try
+        {
+            var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "build");
+            
+            // First, copy the OCompiler assembly (the compiler itself) if it exists
+            try
+            {
+                var ocompilerAsm = typeof(CodeGenerator).Assembly;
+                var ocompilerLoc = ocompilerAsm.Location;
+                if (!string.IsNullOrEmpty(ocompilerLoc) && File.Exists(ocompilerLoc))
+                {
+                    var dest = Path.Combine(buildDir, Path.GetFileName(ocompilerLoc));
+                    if (!File.Exists(dest))
+                    {
+                        File.Copy(ocompilerLoc, dest);
+                        Console.WriteLine($"**[ INFO ] Copied: {Path.GetFileName(ocompilerLoc)}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"**[ DEBUG ] Could not copy OCompiler: {ex.Message}");
+            }
+            
+            // Then, try to copy other referenced assemblies
+            if (assembly != null)
+            {
+                var refs = assembly.GetReferencedAssemblies();
+                foreach (var r in refs)
+                {
+                    try
+                    {
+                        var asm = Assembly.Load(r);
+                        var loc = asm.Location;
+                        if (!string.IsNullOrEmpty(loc) && File.Exists(loc))
+                        {
+                            var dest = Path.Combine(buildDir, Path.GetFileName(loc));
+                            if (!File.Exists(dest))
+                            {
+                                File.Copy(loc, dest);
+                                Console.WriteLine($"**[ INFO ] Copied dependency: {Path.GetFileName(loc)}");
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // ignore failures for framework assemblies
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"**[ WARN ] CopyReferencedAssemblies failed: {ex.Message}");
         }
     }
 

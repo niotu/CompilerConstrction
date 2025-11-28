@@ -280,7 +280,7 @@ namespace OCompiler.Semantic
                 bool isConstructorCall = false;
                 if (funcCall.Function is IdentifierExpression funcIdent)
                 {
-                    // Это прямой вызов вроде Dog() или Animal()
+                    // Это прямой вызов вроде Dog() или Animal() или Max()
                     var classDecl = program.Classes.FirstOrDefault(c => c.Name == funcIdent.Name);
                     if (classDecl != null)
                     {
@@ -289,10 +289,25 @@ namespace OCompiler.Semantic
                         string fullMethodName = $"{funcIdent.Name}.this";
                         used.Add(fullMethodName);
                     }
+                    else
+                    {
+                        // Это вызов метода (например Max() вызывается как прямая функция)
+                        // Это метод текущего класса
+                        var actualMethodClass = FindMethodClassInHierarchy(methodName, targetClass, program);
+                        if (actualMethodClass != null)
+                        {
+                            string fullMethodName = $"{actualMethodClass}.{methodName}";
+                            used.Add(fullMethodName);
+                            
+                            // Добавляем все переопределённые методы в иерархии наследования 
+                            // (методы с тем же именем в производных классах)
+                            AddOverridingMethods(targetClass, methodName, used, program);
+                        }
+                    }
                 }
                 else if (!isConstructorCall)
                 {
-                    // Это обычный вызов метода. Нужно найти, в каком классе метод реально определён
+                    // Это обычный вызов метода через объект. Нужно найти, в каком классе метод реально определён
                     var actualMethodClass = FindMethodClassInHierarchy(methodName, targetClass, program);
                     if (actualMethodClass != null)
                     {

@@ -8,17 +8,9 @@ class App is
 end
 
 class Main is
-    this() is
-    end
-
     method main() is
         var app : App()
         var val : Integer(10)
-    end
-end
-
-class Main is
-    this() is
         var c : Integer(5)
         c.Print()
     end
