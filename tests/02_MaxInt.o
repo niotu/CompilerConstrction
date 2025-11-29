@@ -1,7 +1,4 @@
 class Main is
-    this() is
-    end
-
     method Max(arr : Array[Integer]) : Integer is
         var i : Integer(0)
         var max : Integer(arr.get(0))

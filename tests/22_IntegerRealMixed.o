@@ -1,12 +1,18 @@
 class IntegerRealMixed is
-    method MixedCalculation(i : Integer, r : Real) : Real is
+    method mixedCalculation(i : Integer, r : Real) : Real is
         var mixedSum : Real(i.Plus(r))
         var converted : Real(i.toReal())
         var backToInt : Integer(r.toInteger())
         var finalResult : Real(converted.Plus(Real(3.14)))
         return finalResult
     end
+end
 
-    this() is
+class Main is
+    method main() is
+        var res : Real()
+        var i : IntegerRealMixed()
+        res := i.mixedCalculation(100,11.1)
+        res.Print()
     end
 end

@@ -1,17 +1,20 @@
 class App is
-    var x : Integer(0)
+    var x : Integer()
     var y : Integer(14)
     var z : Real(2.0)
-
-    this() is
+    method getX() : Integer is
+        return x
+    end
+    this(newX:Integer,newY:Integer,newZ:Real) is
+        x := newX
+        y := newY
+        z := newZ
     end
 end
 
 class Main is
     method main() is
-        var app : App()
-        var val : Integer(10)
-        var c : Integer(5)
-        c.Print()
+        var app : App(1,2,3.8)
+        app.x.Print()
     end
 end

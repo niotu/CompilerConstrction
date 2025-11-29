@@ -1,12 +1,18 @@
 class IntegerUnaryMinus is
-    method Negate(x : Integer) : Integer is
+    method negate(x : Integer) : Integer is
         var positive : Integer(Integer(42))
         var negative : Integer(positive.UnaryMinus())
         var doubled : Integer(negative.Mult(Integer(2)))
         var result : Integer(x.Plus(doubled))
         return result.UnaryMinus()
     end
+end
 
-    this() is
+class Main is
+    method main() is
+        var res : Integer()
+        var i : IntegerUnaryMinus()
+        res := i.negate(10)
+        res.Print()
     end
 end

@@ -410,6 +410,11 @@ FunctionalCall
     {
         $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);
     }
+    | MemberAccess DOT IDENTIFIER Arguments
+    {
+        var memberAccess = new MemberAccessExpression((ExpressionNode)$1.ast, new IdentifierExpression((string)$3));
+        $$.ast = new FunctionalCall(memberAccess, (List<ExpressionNode>)$4.ast);
+    }
     | ExpressionDotSequence Arguments
     {
         $$.ast = new FunctionalCall((ExpressionNode)$1.ast, (List<ExpressionNode>)$2.ast);

@@ -136,6 +136,9 @@ namespace OCompiler.CodeGeneration
             /// <summary>Boolean.Equal(x) - равно</summary>
             public static bool Equal(bool self, bool other) => self == other;
             
+            /// <summary>Boolean.toInteger() - преобразование в Integer</summary>
+            public static int toInteger(bool self) => self ? 1 : 0;
+            
             /// <summary>Boolean.Print() - вывести значение в консоль</summary>
             public static void Print(bool self)
             {
@@ -198,13 +201,14 @@ namespace OCompiler.CodeGeneration
         // ============================================
         public static class OList
         {
-            /// <summary>List.append(value) - добавить элемент в конец</summary>
-            public static void Append<T>(List<T> list, T value)
+            /// <summary>List.append(value) - добавить элемент в конец и вернуть список</summary>
+            public static List<T> Append<T>(List<T> list, T value)
             {
                 if (list == null)
                     throw new NullReferenceException("List is null");
                 
                 list.Add(value);
+                return list;
             }
 
             /// <summary>List.head() - получить первый элемент</summary>

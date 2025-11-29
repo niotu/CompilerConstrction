@@ -1,9 +1,9 @@
 class ListOperations is
-    method BuildList() : Integer is
+    method buildList() : Integer is
         var list : List[Integer](5)
-        list := list.append(Integer(10))
-        list := list.append(Integer(20))
-        list := list.append(Integer(30))
+        list := list.append(10)
+        list := list.append(20)
+        list := list.append(30)
         
         var first : Integer(list.head())
         var rest : List[Integer]()
@@ -12,7 +12,13 @@ class ListOperations is
         
         return first.Plus(second)
     end
+end
 
-    this() is
+class Main is
+    method main() is
+        var res : Integer()
+        var l : ListOperations()
+        res := l.buildList()
+        res.Print()
     end
 end

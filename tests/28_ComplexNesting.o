@@ -1,5 +1,5 @@
-class Main is
-    method NestedCalls(arr : Array[Integer]) : Real is
+class ArrayChecker is
+    method nestedCalls(arr : Array[Integer]) : Real is
         var maxIndex : Integer(arr.Length().Minus(Integer(1)))
         var firstValue : Integer(arr.get(Integer(0)))
         var lastValue : Integer(arr.get(maxIndex))
@@ -20,12 +20,19 @@ class Main is
         
         return finalValue
     end
+end
 
-    this() is
-        var a : Array[Integer](5)
-    end
-
+class Main is
     method main() is
-        NestedCalls(this.a)
-    end 
+        var res : Real()
+        var a : ArrayChecker()
+        var arr : Array[Integer](5)
+        arr.set(0, 3)
+        arr.set(1, 7)
+        arr.set(2, 2)
+        arr.set(3, 9)
+        arr.set(4, 1)
+        res := a.nestedCalls(arr)
+        res.Print()
+    end
 end

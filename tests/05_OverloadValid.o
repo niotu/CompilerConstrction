@@ -14,19 +14,14 @@ class Calc is
     method getResult() : Real is
         return current
     end
-
-    this() is
-    end
 end
 
 class Main is
-    this() is
-    end
-
     method main() is
         var calc : Calc()
         var result : Real()
-        result := calc.Add(3)
+        calc := calc.Add(3).Add(5.5).Add(4.5)
         result := calc.getResult()
+        result.Print()
     end
 end

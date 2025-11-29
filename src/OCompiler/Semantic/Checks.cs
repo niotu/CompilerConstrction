@@ -26,6 +26,13 @@ namespace OCompiler.Semantic
 
         public void Check(ProgramNode program)
         {
+            // 0. Проверка на дублирование имен классов
+            CheckDuplicateClasses(program);
+            
+            // Если есть ошибки, прерываем проверку
+            if (_errors.Count > 0)
+                return;
+            
             // 0. Проверка иерархии классов (ДОЛЖНА БЫТЬ ПЕРВОЙ!)
             CheckClassHierarchy(program);
             
@@ -217,6 +224,24 @@ namespace OCompiler.Semantic
             }
             
             return expr;
+        }
+
+        // Проверка на дублирование имен классов
+        private void CheckDuplicateClasses(ProgramNode program)
+        {
+            var classNames = new HashSet<string>();
+            
+            foreach (var classDecl in program.Classes)
+            {
+                if (classNames.Contains(classDecl.Name))
+                {
+                    _errors.Add($"Duplicate class definition: class '{classDecl.Name}' is already defined");
+                }
+                else
+                {
+                    classNames.Add(classDecl.Name);
+                }
+            }
         }
 
         // 1. Correct Keyword Usage
@@ -676,7 +701,11 @@ namespace OCompiler.Semantic
                     bool isBuiltInConstructor = _hierarchy.IsBuiltInClass(methodName) && 
                                             _hierarchy.IsValidBuiltInConstructor(methodName, funcCall.Arguments.Count);
                     
-                    if (!isConstructor && !isMethod && !isBuiltInType && !isBuiltInMethodCall && !isArrayMethod && !isBuiltInConstructor)
+                    // ИСПРАВЛЕНИЕ: не выдаем общую ошибку, если это MemberAccessExpression
+                    // (конкретная ошибка уже выдана при проверке MemberAccessExpression)
+                    bool isMemberAccessCall = funcCall.Function is MemberAccessExpression;
+                    
+                    if (!isConstructor && !isMethod && !isBuiltInType && !isBuiltInMethodCall && !isArrayMethod && !isBuiltInConstructor && !isMemberAccessCall)
                     {
                         _errors.Add($"Method or constructor '{methodName}' not found");
                     }
@@ -727,9 +756,11 @@ namespace OCompiler.Semantic
                     else if (_hierarchy.ClassExists(actualTargetType))
                     {
                         var method = FindMethod(memberIdent.Name, actualTargetType);
-                        if (method == null)
+                        var field = FindField(memberIdent.Name, actualTargetType);
+                        
+                        if (method == null && field == null)
                         {
-                            _errors.Add($"Method '{memberIdent.Name}' not found in class '{actualTargetType}'");
+                            _errors.Add($"Method or field '{memberIdent.Name}' not found in class '{actualTargetType}'");
                         }
                     }
                 }
@@ -1783,7 +1814,25 @@ namespace OCompiler.Semantic
                 case MemberAccessExpression memberAccess:
                     return InferMemberAccessType(memberAccess);
                 case FunctionalCall funcCall when funcCall.Function is MemberAccessExpression memberAccess:
-                    return InferBuiltInMethodReturnType(funcCall, memberAccess);
+                    {
+                        // Сначала пробуем встроенный метод
+                        var builtInType = InferBuiltInMethodReturnType(funcCall, memberAccess);
+                        if (builtInType != "Unknown")
+                            return builtInType;
+                        
+                        // Если не встроенный, пробуем пользовательский класс
+                        var targetType = InferExpressionType(memberAccess.Target);
+                        if (_hierarchy.ClassExists(targetType) && memberAccess.Member is IdentifierExpression methodIdent)
+                        {
+                            var method = FindMethod(methodIdent.Name, targetType);
+                            if (method != null && !string.IsNullOrEmpty(method.Header.ReturnType))
+                            {
+                                return method.Header.ReturnType;
+                            }
+                        }
+                        
+                        return "Unknown";
+                    }
                 default:
                     return "Unknown";
             }
@@ -1820,7 +1869,7 @@ namespace OCompiler.Semantic
                 }
             }
             
-            // Если target - это класс (например, this или переменная класса), проверяем методы
+            // Если target - это класс (например, this или переменная класса), проверяем методы и поля
             if (memberAccess.Member is IdentifierExpression memberIdentifier)
             {
                 var methodName = memberIdentifier.Name;
@@ -1832,6 +1881,13 @@ namespace OCompiler.Semantic
                     if (method != null && !string.IsNullOrEmpty(method.Header.ReturnType))
                     {
                         return method.Header.ReturnType;
+                    }
+                    
+                    // Если метод не найден, проверяем поля
+                    var field = FindField(methodName, targetType);
+                    if (field != null)
+                    {
+                        return InferExpressionType(field.Expression);
                     }
                 }
             }
@@ -1933,6 +1989,12 @@ namespace OCompiler.Semantic
         {
             // Ищет метод в классе и его базовых классах
             return _hierarchy.FindMethodInHierarchy(methodName, className);
+        }
+
+        private VariableDeclaration FindField(string fieldName, string className)
+        {
+            // Ищет поле в классе и его базовых классах
+            return _hierarchy.FindFieldInHierarchy(fieldName, className);
         }
 
         private string GetVariableType(string variableName)

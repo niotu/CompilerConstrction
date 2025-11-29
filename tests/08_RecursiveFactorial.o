@@ -6,19 +6,13 @@ class Factorial is
             return n.Mult(this.fact(n.Minus(1)))
         end
     end
-
-    this() is
-    end
 end
 
 class Main is
-    this() is
-
-    end
-
     method main() is
         var f : Factorial()
-        var result : Integer
+        var result : Integer()
         result := f.fact(5)
+        result.Print()
     end
 end

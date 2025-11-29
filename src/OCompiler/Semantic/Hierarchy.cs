@@ -82,6 +82,24 @@ public class ClassHierarchy
         return null;
     }
 
+    public VariableDeclaration? FindFieldInHierarchy(string fieldName, string className)
+    {
+        var current = _classes.GetValueOrDefault(className);
+        while (current != null)
+        {
+            var field = current.Members
+                .OfType<VariableDeclaration>()
+                .FirstOrDefault(f => f.Identifier == fieldName);
+            
+            if (field != null)
+                return field;
+            
+            // Ищем в базовом классе
+            current = string.IsNullOrEmpty(current.Extension) ? null : GetBaseClass(current);
+        }
+        return null;
+    }
+
     public bool HasCyclicDependency(ClassDeclaration classDecl, out string? cycle)
     {
         cycle = null;

@@ -286,6 +286,9 @@ namespace OCompiler.CodeGeneration
                 var field = GenerateField(typeBuilder, member);
                 fields[member.Identifier] = field;
             }
+            
+            // Регистрируем поля класса
+            _methodGenerator.RegisterFields(classDecl.Name, fields);
 
             // Генерация конструкторов
             var hasConstructor = false;
@@ -298,7 +301,7 @@ namespace OCompiler.CodeGeneration
             // Если нет явного конструктора, создаём конструктор по умолчанию
             if (!hasConstructor)
             {
-                GenerateDefaultConstructor(typeBuilder);
+                GenerateDefaultConstructor(typeBuilder, classDecl, fields);
             }
 
             // Генерация методов
@@ -384,7 +387,7 @@ namespace OCompiler.CodeGeneration
             var fieldBuilder = typeBuilder.DefineField(
                 varDecl.Identifier,
                 fieldType,
-                FieldAttributes.Private);
+                FieldAttributes.Public); // Поля публичные для доступа на чтение
 
             Console.WriteLine($"**[ DEBUG ]   Field: {varDecl.Identifier} : {fieldType.Name}");
 
@@ -392,9 +395,9 @@ namespace OCompiler.CodeGeneration
         }
 
         /// <summary>
-        /// Генерирует конструктор по умолчанию.
+        /// Генерирует конструктор по умолчанию с инициализацией полей.
         /// </summary>
-        private void GenerateDefaultConstructor(TypeBuilder typeBuilder)
+        private void GenerateDefaultConstructor(TypeBuilder typeBuilder, ClassDeclaration classDecl, Dictionary<string, FieldBuilder> fields)
         {
             var ctorBuilder = typeBuilder.DefineConstructor(
                 MethodAttributes.Public,
@@ -405,10 +408,51 @@ namespace OCompiler.CodeGeneration
 
             // Вызов конструктора базового класса
             il.Emit(OpCodes.Ldarg_0); // this
-            var baseConstructor = typeBuilder.BaseType!.GetConstructor(Type.EmptyTypes);
+            
+            ConstructorInfo? baseConstructor = null;
+            
+            // Если базовый тип - TypeBuilder, ищем зарегистрированный конструктор
+            if (typeBuilder.BaseType is TypeBuilder baseTypeBuilder)
+            {
+                baseConstructor = _methodGenerator.GetRegisteredConstructor(baseTypeBuilder.Name, Type.EmptyTypes);
+            }
+            else
+            {
+                // Иначе используем обычную рефлексию
+                baseConstructor = typeBuilder.BaseType!.GetConstructor(Type.EmptyTypes);
+            }
+            
+            if (baseConstructor == null)
+            {
+                Console.WriteLine($"**[ WARN ] Cannot get base constructor, using object()");
+                baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
+            }
+            
             il.Emit(OpCodes.Call, baseConstructor!);
 
+            // ИСПРАВЛЕНИЕ: Инициализация полей класса (используем MethodGenerator для генерации выражений)
+            var tempFields = new Dictionary<string, FieldBuilder>();
+            var tempLocals = new Dictionary<string, LocalBuilder>();
+            var tempLocalTypes = new Dictionary<string, Type>();
+            var tempParams = new Dictionary<string, int>();
+            var tempParamTypes = new Dictionary<string, Type>();
+            
+            _methodGenerator.SetContext(il, tempLocals, tempLocalTypes, fields, tempParams, tempParamTypes, classDecl.Name);
+            
+            foreach (var varDecl in classDecl.Members.OfType<VariableDeclaration>())
+            {
+                if (fields.TryGetValue(varDecl.Identifier, out var field))
+                {
+                    il.Emit(OpCodes.Ldarg_0); // this
+                    _methodGenerator.GenerateExpression(varDecl.Expression);
+                    il.Emit(OpCodes.Stfld, field);
+                }
+            }
+
             il.Emit(OpCodes.Ret);
+            
+            // Регистрируем конструктор по умолчанию
+            _methodGenerator.RegisterConstructor(typeBuilder.Name, Type.EmptyTypes, ctorBuilder);
 
             Console.WriteLine($"**[ DEBUG ]   Generated default constructor");
         }

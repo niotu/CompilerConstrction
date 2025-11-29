@@ -1,5 +1,5 @@
 class ArrayOperations is
-    method ProcessArray() : Integer is
+    method processArray() : Integer is
         var arr : Array[Integer](Integer(5))
         var i : Integer(0)
         
@@ -18,7 +18,13 @@ class ArrayOperations is
         var list : arr.toList()
         return sum
     end
+end
 
-    this() is
+class Main is
+    method main() is
+        var res : Integer()
+        var a : ArrayOperations()
+        res := a.processArray()
+        res.Print()
     end
 end

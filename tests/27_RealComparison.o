@@ -1,5 +1,5 @@
 class RealComparisons is
-    method CompareReals(a : Real, b : Real) : Boolean is
+    method compareReals(a : Real, b : Real) : Boolean is
         var isLess : Boolean(a.Less(b))
         var isGreater : Boolean(a.Greater(Real(0.0)))
         var isEqual : Boolean(a.Equal(b))
@@ -12,11 +12,13 @@ class RealComparisons is
         
         return result
     end
+end
 
-    this() is
-    end
-
-    method main() is 
-        CompareReals(3.1, 2.8)
+class Main is
+    method main() is
+        var res : Boolean()
+        var r : RealComparisons()
+        res := r.compareReals(100.1,20.2)
+        res.Print()
     end
 end

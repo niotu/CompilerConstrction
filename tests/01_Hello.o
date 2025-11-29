@@ -1,9 +1,5 @@
 class Main is
-    this() is
-        
-    end
-
     method main() is
-
+        Integer(1001101).Print()
     end
 end

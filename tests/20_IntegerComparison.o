@@ -1,5 +1,5 @@
 class IntegerComparisons is
-    method Compare(x : Integer, y : Integer) : Boolean is
+    method compare(x : Integer, y : Integer) : Boolean is
         var result : Boolean(false)
         if x.Less(y) then
             result := true
@@ -18,7 +18,13 @@ class IntegerComparisons is
         end
         return result
     end
+end
 
-    this() is
+class Main is
+    method main() is
+        var res : Boolean()
+        var i : IntegerComparisons()
+        res := i.compare(100,20)
+        res.Print()
     end
 end

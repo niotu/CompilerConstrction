@@ -8,6 +8,7 @@ class Main is
         l.append(1)
         l.append(2)
         l.append(3)
-        var head : l.head() // 1
+        var head : Integer(l.head()) // 1
+        head.Print()
     end
 end
