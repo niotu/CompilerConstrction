@@ -15,13 +15,7 @@ namespace OCompiler;
 
 /// <summary>
 /// O language compiler main program
-/// Part of Compiler Construction course at Innopolis University
 /// Dmitriy Lukiyanov (SD-03), Ramil Aminov (SD-01)
-/// 
-/// CHANGELOG:
-/// - Added code generation phase using System.Reflection.Emit
-/// - Added --codegen, --run, --save-assembly command line options
-/// - Integrated CodeGenerator into compilation pipeline
 /// </summary>
 public class Program
 {
@@ -91,7 +85,7 @@ public class Program
         Console.WriteLine("  --no-codegen         Skip code generation phase");
         Console.WriteLine("  --run                Execute generated assembly after compilation");
         Console.WriteLine("  --save-assembly <path>  Save generated assembly to file (.dll)");
-        Console.WriteLine("  --emit-exe <path>    Save as executable (.exe) with entry point");
+        Console.WriteLine("  --emit-dll <path>    Save as executable (.dll) with entry point");
         Console.WriteLine("  --emit-il            Print generated IL instructions (debug)");
         Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (this() will be invoked)");
         
@@ -217,9 +211,6 @@ public class Program
             return;
         }
         
-        // ============================================================
-        // ФАЗА 4: ОПТИМИЗАЦИЯ AST
-        // ============================================================
         if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
         {
             Console.WriteLine("**[ INFO ] Starting AST optimizations...");
@@ -235,10 +226,6 @@ public class Program
             Console.WriteLine("**[ OK ] AST optimizations completed.");
         }
     
-        
-        // ============================================================
-        // ФАЗА 5: ГЕНЕРАЦИЯ КОДА (НОВАЯ ФАЗА)
-        // ============================================================
         if (!Environment.GetCommandLineArgs().Contains("--no-codegen"))
         {
             GenerateCode(ast, classHierarchy, sourceFileName);
@@ -247,13 +234,8 @@ public class Program
         {
             Console.WriteLine("**[ INFO ] Code generation skipped (--no-codegen flag)");
         }
-
-        Console.WriteLine("**[ OK ] Compilation completed successfully!");
     }
 
-    // ============================================================
-    // НОВАЯ ФУНКЦИЯ: ГЕНЕРАЦИЯ КОДА
-    // ============================================================
     private static void GenerateCode(ProgramNode ast, ClassHierarchy hierarchy, string sourceFileName)
     {
         Console.WriteLine("**[ INFO ] Starting code generation...");
@@ -296,45 +278,30 @@ public class Program
                 codeGenerator.SaveToFile("OCompilerOutput.dll");
             }
 
-            
-            // Опционально: сохранение сборки в файл как DLL
-            if (args.Contains("--save-assembly"))
+            if (args.Contains("--emit-dll"))
             {
-                int index = Array.IndexOf(args, "--save-assembly");
+                int index = Array.IndexOf(args, "--emit-dll");
                 if (index + 1 < args.Length)
                 {
+                    Console.WriteLine($"**[ INFO ] --emit-dll flag detected");
                     string outputPath = args[index + 1];
-                    Console.WriteLine($"**[ INFO ] --save-assembly flag: {outputPath}");
-                    try
+                
+                    if (string.IsNullOrWhiteSpace(outputPath))
                     {
-                        SaveAssemblyToFile(codeGenerator, outputPath, asExecutable: false);
+                        
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"**[ ERR ] Failed to save assembly: {ex.Message}");
-                    }
-                }
-            }
-
-            // Опционально: сохранение сборки как исполняемого файла .exe
-            if (args.Contains("--emit-exe"))
-            {
-                int index = Array.IndexOf(args, "--emit-exe");
-                if (index + 1 < args.Length)
-                {
-                    string outputPath = args[index + 1];
-                    Console.WriteLine($"**[ INFO ] --emit-exe flag: {outputPath}");
+                    Console.WriteLine($"**[ INFO ] --emit-dll flag: {outputPath}");
                     try
                     {
                         // Генерируем точку входа перед сохранением
                         codeGenerator.GenerateEntryPoint();
-                        
-                        // Переименовываем в .dll (так как .NET 9 PersistedAssemblyBuilder создаёт управляемые сборки)
-                        string dllPath = Path.ChangeExtension(outputPath, ".dll");
+                        // Emit into a fresh 'build' directory with a stable name 'output.dll'
+                        EnsureFreshBuildDir();
+                        string dllPath = Path.Combine(Directory.GetCurrentDirectory(), "build", $"{outputPath}.dll");
                         SaveAssemblyToFile(codeGenerator, dllPath, asExecutable: true);
-                        
-                        // Создаём .runtimeconfig.json для запуска сборки
-                        string configPath = Path.ChangeExtension(outputPath, ".runtimeconfig.json");
+
+                        // Create runtimeconfig.json next to the DLL
+                        string configPath = Path.Combine(Directory.GetCurrentDirectory(), "build", $"{outputPath}.runtimeconfig.json");
                         CreateRuntimeConfig(configPath);
                         
                         Console.WriteLine();
@@ -342,7 +309,7 @@ public class Program
                         Console.WriteLine("**[ INFO ] Executable created successfully!");
                         Console.WriteLine("**[ INFO ] ========================================");
                         Console.WriteLine($"**[ INFO ] To run the program, use:");
-                        Console.WriteLine($"**[ INFO ]   dotnet {Path.GetFileName(dllPath)}");
+                        Console.WriteLine($"**[ INFO ]   dotnet build/{Path.GetFileName(dllPath)}");
                         Console.WriteLine($"**[ INFO ] Or reference it from C#/.NET code");
                         Console.WriteLine("**[ INFO ] ========================================");
                     }
@@ -350,15 +317,12 @@ public class Program
                     {
                         Console.WriteLine($"**[ ERR ] Failed to save executable: {ex.Message}");
                     }
+                } else
+                {
+                    Console.WriteLine("**[ ERR ] --emit-dll flag requires an output path argument");
                 }
             }
 
-            
-            // ИСПРАВЛЕНИЕ: Передаём завершённые типы вместо Assembly
-            if (Environment.GetCommandLineArgs().Contains("--run"))
-            {
-                ExecuteGeneratedCode(codeGenerator, entryPoint, ast, hierarchy);
-            }
         }
         catch (Exception ex)
         {
@@ -370,7 +334,6 @@ public class Program
             throw new CompilerException("Code generation failed", ex);
         }
     }
-
         private static void PrintILAsText(CodeGenerator codeGenerator)
         {
             var ilEmitter = new OCompiler.CodeGeneration.ILEmitter();
@@ -454,341 +417,6 @@ public class Program
             Console.WriteLine(ilEmitter.GetILCode());
             Console.WriteLine("========================================");
         }
-
-        // НОВАЯ ФУНКЦИЯ: Выполнение сгенерированного кода
-        private static void ExecuteGeneratedCode(CodeGenerator codeGenerator, string? entryPoint, ProgramNode ast, ClassHierarchy hierarchy)
-        {
-            Console.WriteLine("\n**[ INFO ] Executing generated code...");
-            Console.WriteLine("========================================");
-            
-            try
-            {
-                var allTypes = codeGenerator.GetAllTypes();
-
-                if (allTypes.Count == 0)
-                {
-                    Console.WriteLine("**[ WARN ] No types found to execute");
-                    return;
-                }
-
-                // If an explicit entry point class was provided, try to execute it
-                if (!string.IsNullOrEmpty(entryPoint))
-                {
-                    if (allTypes.TryGetValue(entryPoint, out var entryType))
-                    {
-                        Console.WriteLine($"**[ INFO ] Creating instance of entry class: {entryPoint}");
-                        try
-                        {
-                            var ctorInfo = entryType.GetConstructor(Type.EmptyTypes);
-                            object? instance = null;
-                            if (ctorInfo != null)
-                            {
-                                instance = ctorInfo.Invoke(null);
-                                Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via ConstructorInfo.Invoke).");
-                            }
-                            else
-                            {
-                                // Last resort: try Activator
-                                instance = Activator.CreateInstance(entryType);
-                                Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via Activator).");
-                            }
-
-                            // If an instance was created, try to call its 'main' method
-                            if (instance != null)
-                            {
-                                var mainMethod = entryType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                                if (mainMethod != null)
-                                {
-                                    // If static, instance can be null
-                                    var target = mainMethod.IsStatic ? null : instance;
-                                    mainMethod.Invoke(target, null);
-                                    Console.WriteLine($"**[ OK ] Called '{entryPoint}.main()' via reflection.");
-                                }
-                                else
-                                {
-                                    Console.WriteLine($"**[ WARN ] No 'main' method found on '{entryPoint}'; entry constructor executed.");
-                                }
-                            }
-                            return;
-                        }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"**[ WARN ] Activator.CreateInstance failed for '{entryPoint}': {ex.Message}");
-                                if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
-
-                                // Фоллбек 1: попробуем выполнить через assembly-type lookup
-                                try
-                                {
-                                    Console.WriteLine("**[ INFO ] Falling back to assembly-type lookup");
-                                    var asm = codeGenerator.GetAssembly();
-                                    var entryRuntimeType = asm.GetType(entryPoint!);
-                                    if (entryRuntimeType != null)
-                                    {
-                                        var inst = Activator.CreateInstance(entryRuntimeType);
-                                        Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created via assembly lookup.");
-                                        return;
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine("**[ WARN ] Entry type not found via assembly.GetType().");
-                                    }
-                                }
-                                catch (Exception ex2)
-                                {
-                                    Console.WriteLine($"**[ DEBUG ] assembly lookup failed: {ex2.Message}");
-                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex2.StackTrace}");
-                                }
-
-                                // Фоллбек 2: запустить интерпретатор для конструктора
-                                try
-                                {
-                                    Console.WriteLine("**[ INFO ] Falling back to interpreter execution");
-                                    var interpreter = new Interpreter(ast, hierarchy);
-                                    interpreter.ExecuteConstructorByName(entryPoint!);
-                                    return;
-                                }
-                                catch (Exception iex)
-                                {
-                                    Console.WriteLine($"**[ ERR ] Interpreter fallback failed: {iex.Message}");
-                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{iex.StackTrace}");
-                                }
-
-                                return;
-                            }
-                    }
-                    else
-                    {
-                        Console.WriteLine($"**[ ERR ] Entry point class '{entryPoint}' not found among generated types.");
-                        Console.WriteLine("**[ INFO ] Available types:");
-                        foreach (var kvp in allTypes)
-                        {
-                            Console.WriteLine($"  - {kvp.Key}");
-                        }
-                        return;
-                    }
-                }
-
-                // If no explicit entry point provided, prefer class named 'Main'
-                bool executed = false;
-                if (string.IsNullOrEmpty(entryPoint))
-                {
-                    if (allTypes.TryGetValue("Main", out var mainType))
-                    {
-                        Console.WriteLine("**[ INFO ] Defaulting entry point to class: Main");
-                        try
-                        {
-                            var ctor = mainType.GetConstructor(Type.EmptyTypes);
-                            object? mainInstance = null;
-                            if (ctor != null)
-                            {
-                                mainInstance = ctor.Invoke(null);
-                                Console.WriteLine("**[ OK ] Instance of 'Main' created (via ConstructorInfo.Invoke)");
-                                executed = true;
-                            }
-                            else
-                            {
-                                mainInstance = Activator.CreateInstance(mainType);
-                                Console.WriteLine("**[ OK ] Instance of 'Main' created (via Activator)");
-                                executed = true;
-                            }
-
-                            // Try to call 'main' method on the instance (or static if defined)
-                            if (mainInstance != null)
-                            {
-                                var mainMeth = mainType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                                if (mainMeth != null)
-                                {
-                                    var target = mainMeth.IsStatic ? null : mainInstance;
-                                    mainMeth.Invoke(target, null);
-                                    Console.WriteLine("**[ OK ] Called 'Main.main()' via reflection.");
-                                }
-                                else
-                                {
-                                    Console.WriteLine("**[ WARN ] 'Main' has no method 'main()' to invoke.");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"**[ WARN ] Creating Main instance failed: {ex.Message}");
-                            if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
-
-                            // try assembly lookup
-                            try
-                            {
-                                Console.WriteLine("**[ INFO ] Falling back to assembly-type lookup for Main");
-                                var asm = codeGenerator.GetAssembly();
-                                var rt = asm.GetType("Main");
-                                if (rt != null)
-                                {
-                                    var inst = Activator.CreateInstance(rt);
-                                    Console.WriteLine("**[ OK ] Instance of 'Main' created via assembly lookup");
-                                    executed = true;
-
-                                    var mainMeth = rt.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                                    if (mainMeth != null)
-                                    {
-                                        var target = mainMeth.IsStatic ? null : inst;
-                                        mainMeth.Invoke(target, null);
-                                        Console.WriteLine("**[ OK ] Called 'Main.main()' via assembly lookup.");
-                                    }
-                                }
-                            }
-                            catch (Exception ex2)
-                            {
-                                Console.WriteLine($"**[ DEBUG ] assembly lookup failed: {ex2.Message}");
-                                if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex2.StackTrace}");
-                            }
-
-                            // interpreter fallback
-                            if (!executed)
-                            {
-                                try
-                                {
-                                    Console.WriteLine("**[ INFO ] Falling back to interpreter execution for Main");
-                                    var interpreter = new Interpreter(ast, hierarchy);
-                                    interpreter.ExecuteMethodByName("Main", "main");
-                                    executed = true;
-                                }
-                                catch (Exception iex)
-                                {
-                                    Console.WriteLine($"**[ ERR ] Interpreter fallback failed for Main: {iex.Message}");
-                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{iex.StackTrace}");
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // If still not executed, fallback to previous behavior (first type with parameterless ctor)
-                if (!executed)
-                {
-                    // No explicit entry point: fallback to first type with parameterless ctor
-                    foreach (var kvp in allTypes)
-                    {
-                        var type = kvp.Value;
-                        var typeName = kvp.Key;
-
-                        // Пропускаем встроенные компиляторные типы
-                        if (typeName.StartsWith("<"))
-                            continue;
-
-                        var constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor != null)
-                        {
-                            Console.WriteLine($"**[ INFO ] Creating instance of class: {typeName}");
-                            try
-                            {
-                                object? instance = null;
-                                var ctor = type.GetConstructor(Type.EmptyTypes);
-                                if (ctor != null)
-                                {
-                                    instance = ctor.Invoke(null);
-                                    Console.WriteLine($"**[ OK ] Instance created successfully (via ConstructorInfo.Invoke)!");
-                                }
-                                else
-                                {
-                                    instance = Activator.CreateInstance(type);
-                                    Console.WriteLine($"**[ OK ] Instance created successfully (via Activator)!");
-                                }
-
-                                // Опционально: вызов метода Main() если есть
-                                var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
-                                if (mainMethod != null)
-                                {
-                                    Console.WriteLine($"**[ INFO ] Calling method: Main()");
-                                    var result = mainMethod.Invoke(instance, null);
-                                    if (result != null)
-                                    {
-                                        Console.WriteLine($"**[ INFO ] Result: {result}");
-                                    }
-                                }
-
-                                executed = true;
-                                break;
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
-                                if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                {
-                                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
-                                }
-
-                                // Try assembly lookup as first fallback
-                                try
-                                {
-                                    Console.WriteLine("**[ INFO ] Falling back to assembly-type lookup");
-                                    var asm = codeGenerator.GetAssembly();
-                                    var entryRuntimeType = asm.GetType(typeName!);
-                                    if (entryRuntimeType != null)
-                                    {
-                                        var inst2 = Activator.CreateInstance(entryRuntimeType);
-                                        Console.WriteLine($"**[ OK ] Instance of '{typeName}' created via assembly lookup.");
-                                        executed = true;
-                                        break;
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine("**[ WARN ] Entry type not found via assembly.GetType().");
-                                    }
-                                }
-                                catch (Exception ex2)
-                                {
-                                    Console.WriteLine($"**[ DEBUG ] assembly lookup failed: {ex2.Message}");
-                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex2.StackTrace}");
-                                }
-
-                                // Final fallback: interpreter
-                                try
-                                {
-                                    Console.WriteLine("**[ INFO ] Falling back to interpreter execution");
-                                    var interpreter = new Interpreter(ast, hierarchy);
-                                    interpreter.ExecuteConstructorByName(typeName!);
-                                    executed = true;
-                                    break;
-                                }
-                                catch (Exception iex)
-                                {
-                                    Console.WriteLine($"**[ ERR ] Interpreter fallback failed: {iex.Message}");
-                                    if (Environment.GetCommandLineArgs().Contains("--debug"))
-                                        Console.WriteLine($"**[ DEBUG ] Stack trace:\n{iex.StackTrace}");
-                                }
-                            }
-                        }
-                    }
-
-                    if (!executed)
-                    {
-                        Console.WriteLine("**[ WARN ] No executable entry point found.");
-                        Console.WriteLine("**[ INFO ] Available types:");
-                        foreach (var kvp in allTypes)
-                        {
-                            Console.WriteLine($"  - {kvp.Key}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
-                if (Environment.GetCommandLineArgs().Contains("--debug"))
-                {
-                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
-                }
-            }
-            
-            Console.WriteLine("========================================\n");
-        }
-
-
         // ============================================================
         // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ КОДА
         // ============================================================

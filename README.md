@@ -30,10 +30,9 @@ dotnet build/output.dll
 | Flagname | function |
 | - | - |
 | `--debug` | see clear `C#` output and validate errors |
-| `--run` | run code without generation an executable file(depricated) |
-| `--emit-exe <name>` | generate a `.dll` executable file |
-| `--save-assembly <name>` | generate a `.dll` executable file(depricated) |
+| `--emit-dll <name>` | generate a `.dll` executable file |
 | `--emit-il` | prints an IL for a dotnet executable file |
+| `--entry-point <Class>`| Specify the class to use as program entry point (this() will be invoked) |
 | `--no-codegen` | skip an IL code generation |
 | `--ast` | show an exact AST before and after optimizations |
 | `--no-optimize` | skip optimizations step |
