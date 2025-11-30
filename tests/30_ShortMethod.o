@@ -1,0 +1,22 @@
+class TestShort is
+    
+    method add(x: Integer, y: Integer): Integer is
+        return x.Plus(y)
+    end
+    
+    method getConstant(): Integer => 42
+
+    var a : Integer()
+    
+end
+
+class Main is
+    this is
+        var test: TestShort()
+        var result: Integer(test.add(10, 20))
+        result.Print()
+        
+        var constant: Integer(test.getConstant())
+        constant.Print()
+    end
+end
