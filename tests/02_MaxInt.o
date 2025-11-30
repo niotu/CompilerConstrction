@@ -18,8 +18,8 @@ class Main is
         arr.set(2, 2)
         arr.set(3, 9)
         arr.set(4, 1)
-        var res : Integer(0)
-        res := max(arr)
-        res.Print()
+        var max : Integer(0)
+        max := this.max(arr)
+        max.Print()
     end
 end

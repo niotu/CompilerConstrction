@@ -764,41 +764,10 @@ namespace OCompiler.CodeGeneration
                     return;
                 }
 
-                // СЛУЧАЙ 1b: Вызов метода того же класса (неявный this)
-                if (_currentClassName != null && _methodSignatures.ContainsKey(_currentClassName))
-                {
-                    var methods = _methodSignatures[_currentClassName];
-                    var matchingMethod = methods.FirstOrDefault(m => m.methodName == typeName);
-                    if (matchingMethod.methodName != null)
-                    {
-                        // Это метод текущего класса, вызываем через this
-                        Console.WriteLine($"**[ DEBUG ]       Calling {typeName} on implicit this");
-                        _il?.Emit(OpCodes.Ldarg_0);  // this
-                        
-                        // Генерируем аргументы
-                        foreach (var arg in funcCall.Arguments)
-                        {
-                            GenerateExpression(arg);
-                        }
-                        
-                        // Ищем MethodBuilder для вызова
-                        if (_methodBuilders.ContainsKey(_currentClassName))
-                        {
-                            var methodBuilders = _methodBuilders[_currentClassName];
-                            var methodBuilder = methodBuilders.FirstOrDefault(m => m.methodName == typeName);
-                            if (methodBuilder.methodBuilder != null)
-                            {
-                                _il?.Emit(OpCodes.Callvirt, methodBuilder.methodBuilder);
-                                return;
-                            }
-                        }
-                        
-                        throw new InvalidOperationException($"MethodBuilder not found for {_currentClassName}.{typeName}");
-                    }
-                }
-                
-                throw new NotImplementedException(
-                    $"Direct function call '{typeName}' not recognized.");
+                // Прямой вызов метода без объекта запрещен
+                // Согласно спецификации Project O: "Access to a class member is represented using dotted notation"
+                throw new InvalidOperationException(
+                    $"Direct function call '{typeName}' not allowed. Use 'this.{typeName}()' to call instance methods.");
             }
             
             // СЛУЧАЙ 2: Вызов метода на объекте
