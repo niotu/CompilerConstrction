@@ -58,17 +58,22 @@ for test_file in "$TESTS_DIR"/*.o; do
         echo "Test: $test_name"
         
         # Compile the test
-        if dotnet run --project "$PROJECT_PATH" -- "$test_file" --emit-exe app.exe > "$result_file" 2>&1; then
-            # Run the compiled executable
-            echo "Output:" >> "$result_file"
-            if dotnet build/output.dll >> "$result_file" 2>&1; then
-                # Extract output (last line before potential errors)
-                output=$(dotnet build/output.dll 2>&1)
-                echo "✅ PASSED: $test_name → Output: $output" | tee -a "$SUMMARY_FILE"
-                passed_tests=$((passed_tests + 1))
-            else
-                echo "❌ FAILED (runtime): $test_name" | tee -a "$SUMMARY_FILE"
+        if dotnet run --project "$PROJECT_PATH" -- "$test_file" --emit-dll output > "$result_file" 2>&1; then
+            # Check if the DLL was created
+            if [ ! -f "build/output.dll" ]; then
+                echo "❌ FAILED (no dll): $test_name" | tee -a "$SUMMARY_FILE"
                 failed_tests=$((failed_tests + 1))
+            else
+                # Run the compiled executable
+                echo "Output:" >> "$result_file"
+                if output=$(dotnet build/output.dll 2>&1); then
+                    echo "✅ PASSED: $test_name → Output: $output" | tee -a "$SUMMARY_FILE"
+                    passed_tests=$((passed_tests + 1))
+                else
+                    echo "❌ FAILED (runtime): $test_name" | tee -a "$SUMMARY_FILE"
+                    echo "Error: $output" >> "$result_file"
+                    failed_tests=$((failed_tests + 1))
+                fi
             fi
         else
             echo "❌ FAILED (compilation): $test_name" | tee -a "$SUMMARY_FILE"

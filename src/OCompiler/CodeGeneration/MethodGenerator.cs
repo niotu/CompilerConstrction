@@ -29,6 +29,16 @@ namespace OCompiler.CodeGeneration
         private Dictionary<string, Type>? _localTypes;
         private Dictionary<string, FieldBuilder>? _fields;
         private Dictionary<string, int>? _parameters;
+        
+        private static bool IsDebugMode => Environment.GetCommandLineArgs().Contains("--debug");
+        
+        private static void DebugLog(string message)
+        {
+            if (IsDebugMode)
+            {
+                Console.WriteLine(message);
+            }
+        }
         private Dictionary<string, Type>? _parameterTypes;
         private string? _currentClassName;  // Track which class we're currently generating
 
@@ -69,7 +79,7 @@ namespace OCompiler.CodeGeneration
             }
 
             _constructors[className].Add((ctorBuilder, paramTypes));
-            Console.WriteLine($"**[ DEBUG ]   Registered constructor: {className}({string.Join(", ", paramTypes.Select(t => t.Name))})");
+            DebugLog($"**[ DEBUG ]   Registered constructor: {className}({string.Join(", ", paramTypes.Select(t => t.Name))})");
         }
 
         /// <summary>
@@ -116,7 +126,7 @@ namespace OCompiler.CodeGeneration
             }
             
             _methodSignatures[className].Add((methodName, paramTypes, returnType));
-            Console.WriteLine($"**[ DEBUG ]   Registered method: {className}.{methodName}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
+            DebugLog($"**[ DEBUG ]   Registered method: {className}.{methodName}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
         }
 
         /// <summary>
@@ -208,7 +218,7 @@ namespace OCompiler.CodeGeneration
                 if (registeredCtor != null)
                 {
                     baseConstructor = registeredCtor;
-                    Console.WriteLine($"**[ DEBUG ]   Calling base constructor: {baseClassName}()");
+                    DebugLog($"**[ DEBUG ]   Calling base constructor: {baseClassName}()");
                 }
                 else
                 {
@@ -249,7 +259,7 @@ namespace OCompiler.CodeGeneration
 
             _il.Emit(OpCodes.Ret);
 
-            Console.WriteLine($"**[ DEBUG ]   Constructor: this({string.Join(", ", paramTypes.Select(t => t.Name))})");
+            DebugLog($"**[ DEBUG ]   Constructor: this({string.Join(", ", paramTypes.Select(t => t.Name))})");
         }
 
         /// <summary>
@@ -298,7 +308,7 @@ namespace OCompiler.CodeGeneration
 
             _methodBuilders[className].Add((methodBuilder, methodDecl.Header.Name, paramTypes, returnType));
 
-            Console.WriteLine($"**[ DEBUG ]   Registered method: {className}.{methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
+            DebugLog($"**[ DEBUG ]   Registered method: {className}.{methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
         }
 
         // Генерация тела метода
@@ -337,7 +347,7 @@ namespace OCompiler.CodeGeneration
 
             if (methodDecl.Body == null)
             {
-                Console.WriteLine($"**[ DEBUG ]   Method (forward): {methodDecl.Header.Name}");
+                DebugLog($"**[ DEBUG ]   Method (forward): {methodDecl.Header.Name}");
                 return;
             }
 
@@ -365,7 +375,7 @@ namespace OCompiler.CodeGeneration
                 _il.Emit(OpCodes.Ret);
             }
 
-            Console.WriteLine($"**[ DEBUG ]   Method: {methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
+            DebugLog($"**[ DEBUG ]   Method: {methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
         }
 
         // Старый метод для совместимости (если где-то ещё используется)
@@ -434,7 +444,7 @@ namespace OCompiler.CodeGeneration
             _locals![varDecl.Identifier] = local;
             _localTypes![varDecl.Identifier] = varType;
 
-            Console.WriteLine($"**[ DEBUG ]     Variable: {varDecl.Identifier} : {varType.Name}");
+            DebugLog($"**[ DEBUG ]     Variable: {varDecl.Identifier} : {varType.Name}");
 
             GenerateExpression(varDecl.Expression);
             _il.Emit(OpCodes.Stloc, local);
@@ -782,7 +792,7 @@ namespace OCompiler.CodeGeneration
 
                 Type targetType = InferExpressionType(memberAccess.Target);
 
-                Console.WriteLine($"**[ DEBUG ]       Calling {methodName} on type {targetType.Name}");
+                DebugLog($"**[ DEBUG ]       Calling {methodName} on type {targetType.Name}");
 
                 if (targetType == typeof(int))
                 {
@@ -977,7 +987,7 @@ namespace OCompiler.CodeGeneration
                             
                             if (matchingSig != default)
                             {
-                                Console.WriteLine($"**[ DEBUG ]       Method {currentType.Name}.{methodName} returns {matchingSig.returnType.Name} (from signatures)");
+                                DebugLog($"**[ DEBUG ]       Method {currentType.Name}.{methodName} returns {matchingSig.returnType.Name} (from signatures)");
                                 return matchingSig.returnType;
                             }
                         }
@@ -1005,7 +1015,7 @@ namespace OCompiler.CodeGeneration
 
                     if (method != null)
                     {
-                        Console.WriteLine($"**[ DEBUG ]       Method {targetType.Name}.{methodName} returns {method.ReturnType.Name} (from reflection)");
+                        DebugLog($"**[ DEBUG ]       Method {targetType.Name}.{methodName} returns {method.ReturnType.Name} (from reflection)");
                         return method.ReturnType;
                     }
                 }
@@ -1051,13 +1061,13 @@ namespace OCompiler.CodeGeneration
                             if (!string.IsNullOrEmpty(member.Header.ReturnType))
                             {
                                 var returnType = _typeMapper.GetNetType(member.Header.ReturnType);
-                                Console.WriteLine($"**[ DEBUG ]       Method {typeName}.{methodName} returns {returnType.Name} (from AST)");
+                                DebugLog($"**[ DEBUG ]       Method {typeName}.{methodName} returns {returnType.Name} (from AST)");
                                 return returnType;
                             }
                             else
                             {
                                 // Метод void
-                                Console.WriteLine($"**[ DEBUG ]       Method {typeName}.{methodName} returns void (from AST)");
+                                DebugLog($"**[ DEBUG ]       Method {typeName}.{methodName} returns void (from AST)");
                                 return typeof(void);
                             }
                         }
@@ -1450,7 +1460,7 @@ namespace OCompiler.CodeGeneration
 
         private void GenerateUserMethodCall(ExpressionNode target, string methodName, List<ExpressionNode> arguments, Type targetType)
         {
-            Console.WriteLine($"**[ DEBUG ]       Calling user method {methodName} on type {targetType.Name}");
+            DebugLog($"**[ DEBUG ]       Calling user method {methodName} on type {targetType.Name}");
 
             // Генерируем выражение target
             GenerateExpression(target);
@@ -1483,7 +1493,7 @@ namespace OCompiler.CodeGeneration
                             {
                                 GenerateExpression(arg);
                             }
-                            Console.WriteLine($"**[ DEBUG ]       Found method signature in {className}: {methodName}({string.Join(", ", argTypes.Select(t => t.Name))})");
+                            DebugLog($"**[ DEBUG ]       Found method signature in {className}: {methodName}({string.Join(", ", argTypes.Select(t => t.Name))})");
 
                             // Попробуем найти MethodBuilder, зарегистрированный при создании метода
                             if (_methodBuilders.TryGetValue(className, out var builders))

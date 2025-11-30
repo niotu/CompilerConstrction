@@ -30,6 +30,16 @@ namespace OCompiler.CodeGeneration
         private readonly ClassHierarchy _hierarchy;
         private readonly string _assemblyName;
         private readonly Dictionary<string, Dictionary<string, FieldBuilder>> _classFields;
+        
+        private static bool IsDebugMode => Environment.GetCommandLineArgs().Contains("--debug");
+        
+        private static void DebugLog(string message)
+        {
+            if (IsDebugMode)
+            {
+                Console.WriteLine(message);
+            }
+        }
 
         public CodeGenerator(string assemblyName, ClassHierarchy hierarchy)
         {
@@ -57,8 +67,6 @@ namespace OCompiler.CodeGeneration
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(assemblyName);
             _typeMapper = new TypeMapper(_moduleBuilder, _hierarchy);
             _methodGenerator = new MethodGenerator(_typeMapper, _hierarchy);
-
-            Console.WriteLine($"**[ INFO ] Code generator initialized for assembly: {assemblyName}");
         }
 
         public Assembly GetAssembly()
@@ -71,7 +79,7 @@ namespace OCompiler.CodeGeneration
         /// </summary>
         public Assembly Generate(ProgramNode program)
         {
-            Console.WriteLine("**[ INFO ] Phase 1: Declaring types...");
+            DebugLog("**[ DEBUG ] Phase 1: Declaring types...");
             
             // Фаза 1: Объявление всех типов (без тел методов)
             foreach (var classDecl in program.Classes)
@@ -79,8 +87,8 @@ namespace OCompiler.CodeGeneration
                 DeclareType(classDecl);
             }
 
-            Console.WriteLine($"**[ INFO ] Declared {_typeBuilders.Count} types");
-            Console.WriteLine("**[ INFO ] Phase 2: Generating type members...");
+            DebugLog($"**[ DEBUG ] Declared {_typeBuilders.Count} types");
+            DebugLog("**[ DEBUG ] Phase 2: Generating type members...");
 
             // Фаза 2: Генерация членов классов (поля, конструкторы, методы)
             foreach (var classDecl in program.Classes)
@@ -88,7 +96,7 @@ namespace OCompiler.CodeGeneration
                 GenerateClassMembers(classDecl);
             }
 
-            Console.WriteLine("**[ INFO ] Phase 3: Finalizing types...");
+            DebugLog("**[ DEBUG ] Phase 3: Finalizing types...");
 
             // Фаза 3: Завершение создания типов
             foreach (var kvp in _typeBuilders)
@@ -98,7 +106,7 @@ namespace OCompiler.CodeGeneration
                     // Use CreateTypeInfo().AsType() to obtain a runtime Type usable with Activator
                     var completedType = kvp.Value.CreateTypeInfo().AsType();
                     _completedTypes[kvp.Key] = completedType!;
-                    Console.WriteLine($"**[ DEBUG ]   Finalized type: {kvp.Key}");
+                    DebugLog($"**[ DEBUG ]   Finalized type: {kvp.Key}");
                 }
                 catch (Exception ex)
                 {
@@ -107,7 +115,7 @@ namespace OCompiler.CodeGeneration
                 }
             }
 
-            Console.WriteLine($"**[ OK ] Successfully generated {_completedTypes.Count} types");
+            DebugLog($"**[ DEBUG ] Successfully generated {_completedTypes.Count} types");
 
             return _assemblyBuilder;
         }
@@ -184,7 +192,7 @@ namespace OCompiler.CodeGeneration
             // Пропускаем встроенные типы - они уже существуют в .NET
             if (_typeMapper.IsBuiltInType(classDecl.Name))
             {
-                Console.WriteLine($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name}");
+                DebugLog($"**[ DEBUG ]   Skipping built-in type: {classDecl.Name}");
                 return;
             }
 
@@ -211,7 +219,7 @@ namespace OCompiler.CodeGeneration
                     baseType);
 
                 var genericParams = typeBuilder.DefineGenericParameters(classDecl.GenericParameter);
-                Console.WriteLine($"**[ DEBUG ]   Declared generic type: {classDecl.Name}<{classDecl.GenericParameter}>");
+                DebugLog($"**[ DEBUG ]   Declared generic type: {classDecl.Name}<{classDecl.GenericParameter}>");
             }
             else
             {
@@ -221,7 +229,7 @@ namespace OCompiler.CodeGeneration
                     TypeAttributes.Public | TypeAttributes.Class,
                     baseType);
                 
-                Console.WriteLine($"**[ DEBUG ]   Declared type: {classDecl.Name}" + 
+                DebugLog($"**[ DEBUG ]   Declared type: {classDecl.Name}" + 
                     (baseType != typeof(object) ? $" : {baseType.Name}" : ""));
             }
 
@@ -243,7 +251,7 @@ namespace OCompiler.CodeGeneration
                 throw new InvalidOperationException($"Type '{classDecl.Name}' not found in type builders");
             }
 
-            Console.WriteLine($"**[ DEBUG ] Generating members for: {classDecl.Name}");
+            DebugLog($"**[ DEBUG ] Generating members for: {classDecl.Name}");
 
             // Генерация полей
             var fields = new Dictionary<string, FieldBuilder>();
@@ -314,22 +322,22 @@ namespace OCompiler.CodeGeneration
                 var type = kvp.Value;
                 var typeName = kvp.Key;
                 
-                Console.WriteLine($"**[ DEBUG ] Type: {typeName}");
-                Console.WriteLine($"**[ DEBUG ]   - Full name: {type.FullName}");
-                Console.WriteLine($"**[ DEBUG ]   - Type class: {type.GetType().Name}");
-                // Console.WriteLine($"**[ DEBUG ]   - Is runtime type: {type is RuntimeType}");
-                Console.WriteLine($"**[ DEBUG ]   - Assembly: {type.Assembly.GetName().Name}");
-                Console.WriteLine($"**[ DEBUG ]   - Base type: {type.BaseType?.Name ?? "none"}");
+                DebugLog($"**[ DEBUG ] Type: {typeName}");
+                DebugLog($"**[ DEBUG ]   - Full name: {type.FullName}");
+                DebugLog($"**[ DEBUG ]   - Type class: {type.GetType().Name}");
+                // DebugLog($"**[ DEBUG ]   - Is runtime type: {type is RuntimeType}");
+                DebugLog($"**[ DEBUG ]   - Assembly: {type.Assembly.GetName().Name}");
+                DebugLog($"**[ DEBUG ]   - Base type: {type.BaseType?.Name ?? "none"}");
                 
                 var ctors = type.GetConstructors(
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 
-                Console.WriteLine($"**[ DEBUG ]   - Constructors: {ctors.Length}");
+                DebugLog($"**[ DEBUG ]   - Constructors: {ctors.Length}");
                 foreach (var ctor in ctors)
                 {
                     var parameters = ctor.GetParameters();
                     var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                    Console.WriteLine($"**[ DEBUG ]     - {ctor.Name}({paramStr})");
+                    DebugLog($"**[ DEBUG ]     - {ctor.Name}({paramStr})");
                 }
                 
                 var methods = type.GetMethods(
@@ -337,12 +345,12 @@ namespace OCompiler.CodeGeneration
                 
                 if (methods.Length > 0)
                 {
-                    Console.WriteLine($"**[ DEBUG ]   - Methods: {methods.Length}");
+                    DebugLog($"**[ DEBUG ]   - Methods: {methods.Length}");
                     foreach (var method in methods)
                     {
                         var parameters = method.GetParameters();
                         var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                        Console.WriteLine($"**[ DEBUG ]     - {method.ReturnType.Name} {method.Name}({paramStr})");
+                        DebugLog($"**[ DEBUG ]     - {method.ReturnType.Name} {method.Name}({paramStr})");
                     }
                 }
                 
@@ -351,24 +359,24 @@ namespace OCompiler.CodeGeneration
                 
                 if (fields.Length > 0)
                 {
-                    Console.WriteLine($"**[ DEBUG ]   - Fields: {fields.Length}");
+                    DebugLog($"**[ DEBUG ]   - Fields: {fields.Length}");
                     foreach (var field in fields)
                     {
-                        Console.WriteLine($"**[ DEBUG ]     - {field.FieldType.Name} {field.Name}");
+                        DebugLog($"**[ DEBUG ]     - {field.FieldType.Name} {field.Name}");
                     }
                 }
                 
                 Console.WriteLine();
             }
             
-            Console.WriteLine("**[ DEBUG ] ========== BUILTIN TYPES ==========");
-            Console.WriteLine("**[ DEBUG ] The following types are provided by BuiltinTypes runtime:");
-            Console.WriteLine("**[ DEBUG ]   - Integer  → BuiltinTypes.OInteger");
-            Console.WriteLine("**[ DEBUG ]   - Real     → BuiltinTypes.OReal");
-            Console.WriteLine("**[ DEBUG ]   - Boolean  → BuiltinTypes.OBoolean");
-            Console.WriteLine("**[ DEBUG ]   - Array[T] → BuiltinTypes.OArray");
-            Console.WriteLine("**[ DEBUG ]   - List[T]  → BuiltinTypes.OList");
-            Console.WriteLine("**[ DEBUG ] =======================================\n");
+            DebugLog("**[ DEBUG ] ========== BUILTIN TYPES ==========");
+            DebugLog("**[ DEBUG ] The following types are provided by BuiltinTypes runtime:");
+            DebugLog("**[ DEBUG ]   - Integer  → BuiltinTypes.OInteger");
+            DebugLog("**[ DEBUG ]   - Real     → BuiltinTypes.OReal");
+            DebugLog("**[ DEBUG ]   - Boolean  → BuiltinTypes.OBoolean");
+            DebugLog("**[ DEBUG ]   - Array[T] → BuiltinTypes.OArray");
+            DebugLog("**[ DEBUG ]   - List[T]  → BuiltinTypes.OList");
+            DebugLog("**[ DEBUG ] =======================================\n");
         }
 
         /// <summary>
@@ -383,7 +391,7 @@ namespace OCompiler.CodeGeneration
                 fieldType,
                 FieldAttributes.Public); // Поля публичные для доступа на чтение
 
-            Console.WriteLine($"**[ DEBUG ]   Field: {varDecl.Identifier} : {fieldType.Name}");
+            DebugLog($"**[ DEBUG ]   Field: {varDecl.Identifier} : {fieldType.Name}");
 
             return fieldBuilder;
         }
@@ -400,19 +408,19 @@ namespace OCompiler.CodeGeneration
             if (classDecl != null && !string.IsNullOrEmpty(classDecl.Extension))
             {
                 var baseClassName = classDecl.Extension;
-                Console.WriteLine($"**[ DEBUG ]   Collecting fields from base class: {baseClassName}");
+                DebugLog($"**[ DEBUG ]   Collecting fields from base class: {baseClassName}");
                 
                 // Рекурсивно собираем поля базовых классов
                 if (_classFields.TryGetValue(baseClassName, out var baseFields))
                 {
-                    Console.WriteLine($"**[ DEBUG ]   Found {baseFields.Count} fields in base class {baseClassName}");
+                    DebugLog($"**[ DEBUG ]   Found {baseFields.Count} fields in base class {baseClassName}");
                     foreach (var kvp in baseFields)
                     {
                         // Не перезаписываем, если в производном классе есть поле с таким же именем
                         if (!allFields.ContainsKey(kvp.Key))
                         {
                             allFields[kvp.Key] = kvp.Value;
-                            Console.WriteLine($"**[ DEBUG ]   Added base field: {kvp.Key}");
+                            DebugLog($"**[ DEBUG ]   Added base field: {kvp.Key}");
                         }
                     }
                 }
@@ -485,7 +493,7 @@ namespace OCompiler.CodeGeneration
             // Регистрируем конструктор по умолчанию
             _methodGenerator.RegisterConstructor(typeBuilder.Name, Type.EmptyTypes, ctorBuilder);
 
-            Console.WriteLine($"**[ DEBUG ]   Generated default constructor");
+            DebugLog($"**[ DEBUG ]   Generated default constructor");
         }
 
         /// <summary>
@@ -518,7 +526,7 @@ namespace OCompiler.CodeGeneration
                     try
                     {
                         CecilHelpers.SetEntryPointWithCecil(dllPath);
-                        Console.WriteLine($"**[ OK ] Entry point set in PE header (via Cecil)");
+                        Console.WriteLine($"**[ OK ] Entry point set in PE header");
                     }
                     catch (Exception ex)
                     {
@@ -547,7 +555,7 @@ namespace OCompiler.CodeGeneration
                 Console.WriteLine($"**[ ERR ] Failed to save assembly: {ex.Message}");
                 if (Environment.GetCommandLineArgs().Contains("--debug"))
                 {
-                    Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
+                    DebugLog($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
                 }
                 throw;
             }
@@ -572,7 +580,7 @@ namespace OCompiler.CodeGeneration
             
             // Get the method's metadata token
             int methodToken = entryPointMethod.MetadataToken;
-            Console.WriteLine($"**[ DEBUG ] Entry point method token: 0x{methodToken:X8}");
+            DebugLog($"**[ DEBUG ] Entry point method token: 0x{methodToken:X8}");
             
             // Read the current PE file
             byte[] peData = File.ReadAllBytes(peFilePath);
@@ -689,7 +697,7 @@ namespace OCompiler.CodeGeneration
                     return;
                 }
 
-                Console.WriteLine($"**[ DEBUG ] Writing entry point method token: 0x{metadataMethodToken:X8} at offset 0x{entryPointOffset:X}");
+                DebugLog($"**[ DEBUG ] Writing entry point method token: 0x{metadataMethodToken:X8} at offset 0x{entryPointOffset:X}");
                 var tokenBytes = BitConverter.GetBytes(metadataMethodToken);
                 Array.Copy(tokenBytes, 0, peData, entryPointOffset, 4);
                 File.WriteAllBytes(peFilePath, peData);

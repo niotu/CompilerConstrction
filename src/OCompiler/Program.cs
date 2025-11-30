@@ -8,8 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using OCompiler.CodeGeneration;
-using OCompiler.Runtime;
-using System.Reflection.Emit;  // НОВОЕ: Для работы со сборками
+using System.Reflection.Emit;
 
 namespace OCompiler;
 
@@ -19,6 +18,16 @@ namespace OCompiler;
 /// </summary>
 public class Program
 {
+    private static bool IsDebugMode => Environment.GetCommandLineArgs().Contains("--debug");
+    
+    private static void DebugLog(string message)
+    {
+        if (IsDebugMode)
+        {
+            Console.WriteLine(message);
+        }
+    }
+    
     public static void Main(string[] args)
     {
         PrintHeader();
@@ -63,7 +72,6 @@ public class Program
         Console.WriteLine("╔═══════════════════════════════════╗");
         Console.WriteLine("║         O Language Compiler       ║");
         Console.WriteLine("║             LI7 Team              ║");
-        Console.WriteLine("║    with IL Code Generation        ║"); // НОВОЕ
         Console.WriteLine("╚═══════════════════════════════════╝");
         Console.WriteLine();
     }
@@ -81,12 +89,8 @@ public class Program
         Console.WriteLine("  --semantic-only      Stop after semantic analysis");
         Console.WriteLine("  --no-optimize        Skip AST optimizations");
         
-        // НОВЫЕ опции для генерации кода
         Console.WriteLine("  --no-codegen         Skip code generation phase");
-        Console.WriteLine("  --run                Execute generated assembly after compilation");
-        Console.WriteLine("  --save-assembly <path>  Save generated assembly to file (.dll)");
         Console.WriteLine("  --emit-dll <path>    Save as executable (.dll) with entry point");
-        Console.WriteLine("  --emit-il            Print generated IL instructions (debug)");
         Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (this() will be invoked)");
         
         Console.WriteLine();
@@ -104,7 +108,7 @@ public class Program
     private static void CompileFile(string fileName)
     {
         // ============================================================
-        // ФАЗА 1: ЛЕКСИЧЕСКИЙ АНАЛИЗ
+        // PHASE 1: LEXICAL ANALYSIS
         // ============================================================
         string sourceCode = File.ReadAllText(fileName);
         Console.WriteLine($"**[ INFO ] Symbols read: {sourceCode.Length} ");
@@ -115,11 +119,11 @@ public class Program
         
         Console.WriteLine($"**[ OK ] Lexical analysis finished. Detected {tokens.Count} tokens.");
 
-        // Показываем токены, если это запрошено
+        // Show tokens if requested
         if (Environment.GetCommandLineArgs().Contains("--tokens-only"))
         {
             PrintTokens(tokens);
-            return; // Останавливаемся после лексического анализа
+            return; // Stop after lexical analysis
         }
 
         if (Environment.GetCommandLineArgs().Contains("--tokens-to-file"))
@@ -128,7 +132,7 @@ public class Program
         }
 
         // ============================================================
-        // ФАЗА 2: СИНТАКСИЧЕСКИЙ АНАЛИЗ
+        // PHASE 2: SYNTAX ANALYSIS
         // ============================================================
         var ast = SyntaxAnalysis(tokens);
         if (ast == null)
@@ -138,9 +142,28 @@ public class Program
         }
         
         // ============================================================
-        // ФАЗЫ 3-5: СЕМАНТИКА, ОПТИМИЗАЦИЯ, ГЕНЕРАЦИЯ КОДА
+        // PHASE 3: SEMANTIC ANALYSIS
         // ============================================================
-        SemanticAnalysisAndCodeGen(ast, fileName);
+        var classHierarchy = SemanticAnalysis(ast);
+        
+        // ============================================================
+        // PHASE 4: OPTIMIZATION
+        // ============================================================
+        ast = OptimizeAST(ast);
+        
+        // ============================================================
+        // PHASE 5: CODE GENERATION
+        // ============================================================
+        if (!Environment.GetCommandLineArgs().Contains("--no-codegen"))
+        {
+            GenerateCode(ast, classHierarchy, fileName);
+        }
+        else
+        {
+            Console.WriteLine("**[ INFO ] Code generation skipped (--no-codegen flag)");
+        }
+        
+        Console.WriteLine("**[ OK ] Compilation completed successfully!");
     }
 
     private static ProgramNode? SyntaxAnalysis(List<Token> tokens)
@@ -169,26 +192,23 @@ public class Program
         return ast;
     }
     
-    private static void SemanticAnalysisAndCodeGen(ProgramNode ast, string sourceFileName)
+    private static ClassHierarchy SemanticAnalysis(ProgramNode ast)
     {
-        // ============================================================
-        // ФАЗА 3: СЕМАНТИЧЕСКИЙ АНАЛИЗ
-        // ============================================================
         Console.WriteLine("**[ INFO ] Starting semantic analysis...");
         
-        // Создаем иерархию классов
+        // Create class hierarchy
         var classHierarchy = new ClassHierarchy();
         
-        // Регистрируем стандартные классы
+        // Register standard classes
         RegisterStandardClasses(classHierarchy);
         
-        // Регистрируем пользовательские классы
+        // Register user-defined classes
         foreach (var classDecl in ast.Classes)
         {
             classHierarchy.AddClass(classDecl);
         }
         
-        // Семантические проверки
+        // Perform semantic checks
         var semanticChecker = new SemanticChecker(classHierarchy);
         semanticChecker.Check(ast);
         
@@ -204,13 +224,18 @@ public class Program
         
         Console.WriteLine($"**[ OK ] Semantic checks passed. No errors found.");
         
-        // Если запрошено только семантический анализ - останавливаемся здесь
+        // If semantic-only analysis requested, stop here
         if (Environment.GetCommandLineArgs().Contains("--semantic-only"))
         {
             Console.WriteLine("**[ INFO ] Stopping after semantic analysis (--semantic-only flag)");
-            return;
+            Environment.Exit(0);
         }
         
+        return classHierarchy;
+    }
+    
+    private static ProgramNode OptimizeAST(ProgramNode ast)
+    {
         if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
         {
             Console.WriteLine("**[ INFO ] Starting AST optimizations...");
@@ -225,15 +250,8 @@ public class Program
             
             Console.WriteLine("**[ OK ] AST optimizations completed.");
         }
-    
-        if (!Environment.GetCommandLineArgs().Contains("--no-codegen"))
-        {
-            GenerateCode(ast, classHierarchy, sourceFileName);
-        }
-        else
-        {
-            Console.WriteLine("**[ INFO ] Code generation skipped (--no-codegen flag)");
-        }
+        
+        return ast;
     }
 
     private static void GenerateCode(ProgramNode ast, ClassHierarchy hierarchy, string sourceFileName)
@@ -242,15 +260,15 @@ public class Program
         
         try
         {
-            // Получаем имя для сборки из имени файла
+            // Get assembly name from file name
             string assemblyName = Path.GetFileNameWithoutExtension(sourceFileName);
             
-            // Создаем генератор кода
+            // Create code generator
             var codeGenerator = new CodeGenerator(assemblyName, hierarchy);
-            // Генерируем сборку
+            // Generate assembly
             Assembly generatedAssembly = codeGenerator.Generate(ast);
 
-            // // НОВОЕ: Проверка корректности типов
+            // Type correctness validation
             if (Environment.GetCommandLineArgs().Contains("--debug"))
             {
                 codeGenerator.ValidateTypes();
@@ -266,60 +284,59 @@ public class Program
                 entryPoint = args[entryIdx + 1];
                 Console.WriteLine($"**[ INFO ] Entry point class requested: {entryPoint}");
             }
+
+            // Check if --emit-dll flag is present or if no flags are present (default behavior)
+            bool shouldEmitDll = args.Contains("--emit-dll");
+            bool hasNoCodegenFlags = !args.Contains("--emit-dll") && 
+                                     !args.Contains("--no-codegen") && 
+                                     !args.Contains("--semantic-only") && 
+                                     !args.Contains("--tokens-only");
             
-            // Опционально: вывод сгенерированного IL
-            if (args.Contains("--emit-il"))
+            if (shouldEmitDll || hasNoCodegenFlags)
             {
-                PrintILAsText(codeGenerator);
-            }
-
-            if (args.Contains("--emit-assembly"))
-            {
-                codeGenerator.SaveToFile("OCompilerOutput.dll");
-            }
-
-            if (args.Contains("--emit-dll"))
-            {
-                int index = Array.IndexOf(args, "--emit-dll");
-                if (index + 1 < args.Length)
-                {
-                    Console.WriteLine($"**[ INFO ] --emit-dll flag detected");
-                    string outputPath = args[index + 1];
+                string outputPath = "output"; // Default name
                 
-                    if (string.IsNullOrWhiteSpace(outputPath))
-                    {
-                        
-                    }
-                    Console.WriteLine($"**[ INFO ] --emit-dll flag: {outputPath}");
-                    try
-                    {
-                        // Генерируем точку входа перед сохранением
-                        codeGenerator.GenerateEntryPoint();
-                        // Emit into a fresh 'build' directory with a stable name 'output.dll'
-                        EnsureFreshBuildDir();
-                        string dllPath = Path.Combine(Directory.GetCurrentDirectory(), "build", $"{outputPath}.dll");
-                        SaveAssemblyToFile(codeGenerator, dllPath, asExecutable: true);
-
-                        // Create runtimeconfig.json next to the DLL
-                        string configPath = Path.Combine(Directory.GetCurrentDirectory(), "build", $"{outputPath}.runtimeconfig.json");
-                        CreateRuntimeConfig(configPath);
-                        
-                        Console.WriteLine();
-                        Console.WriteLine("**[ INFO ] ========================================");
-                        Console.WriteLine("**[ INFO ] Executable created successfully!");
-                        Console.WriteLine("**[ INFO ] ========================================");
-                        Console.WriteLine($"**[ INFO ] To run the program, use:");
-                        Console.WriteLine($"**[ INFO ]   dotnet build/{Path.GetFileName(dllPath)}");
-                        Console.WriteLine($"**[ INFO ] Or reference it from C#/.NET code");
-                        Console.WriteLine("**[ INFO ] ========================================");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"**[ ERR ] Failed to save executable: {ex.Message}");
-                    }
-                } else
+                if (shouldEmitDll)
                 {
-                    Console.WriteLine("**[ ERR ] --emit-dll flag requires an output path argument");
+                    int index = Array.IndexOf(args, "--emit-dll");
+                    if (index + 1 < args.Length && !args[index + 1].StartsWith("--"))
+                    {
+                        outputPath = args[index + 1];
+                        DebugLog($"**[ DEBUG ] Output file: {outputPath}.dll");
+                    }
+                    else
+                    {
+                        DebugLog($"**[ DEBUG ] Using default output: {outputPath}.dll");
+                    }
+                }
+                else
+                {
+                    DebugLog($"**[ DEBUG ] Using default output: {outputPath}.dll");
+                }
+
+                try
+                {
+                    // Generate entry point before saving
+                    codeGenerator.GenerateEntryPoint();
+                    DebugLog("**[ DEBUG ] Generated entry point");
+                    // Emit into a fresh 'build' directory
+                    EnsureFreshBuildDir();
+                    string dllPath = Path.Combine(Directory.GetCurrentDirectory(), "build", $"{outputPath}.dll");
+                    SaveAssemblyToFile(codeGenerator, dllPath, asExecutable: true);
+
+                    // Create runtimeconfig.json next to the DLL
+                    string configPath = Path.Combine(Directory.GetCurrentDirectory(), "build", $"{outputPath}.runtimeconfig.json");
+                    CreateRuntimeConfig(configPath);
+
+                    // Copy OCompiler.dll to build directory (contains runtime classes)
+                    CopyOCompilerDll();
+                    
+                    Console.WriteLine($"**[ OK ] Created: build/{Path.GetFileName(dllPath)}");
+                    Console.WriteLine($"**[ INFO ] Run with: dotnet build/{Path.GetFileName(dllPath)}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"**[ ERR ] Failed to save executable: {ex.Message}");
                 }
             }
 
@@ -334,186 +351,31 @@ public class Program
             throw new CompilerException("Code generation failed", ex);
         }
     }
-        private static void PrintILAsText(CodeGenerator codeGenerator)
+
+    private static void EnsureFreshBuildDir()
+    {
+        try
         {
-            var ilEmitter = new OCompiler.CodeGeneration.ILEmitter();
-            
-            // Генерируем директивы сборки
-            ilEmitter.EmitAssemblyDirective("GeneratedAssembly");
-            
-            var allTypes = codeGenerator.GetAllTypes();
-            
-            foreach (var kvp in allTypes)
+            var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "build");
+            if (Directory.Exists(buildDir))
             {
-                var typeName = kvp.Key;
-                var type = kvp.Value;
-                
-                // Пропускаем встроенные типы и Program
-                if (typeName is "Program" or "Integer" or "Real" or "Boolean")
-                    continue;
-                
-                ilEmitter.EmitClassStart(typeName);
-                
-                // Выводим поля
-                var fields = type.GetFields(
-                    System.Reflection.BindingFlags.Public | 
-                    System.Reflection.BindingFlags.NonPublic | 
-                    System.Reflection.BindingFlags.Instance | 
-                    System.Reflection.BindingFlags.DeclaredOnly);
-                
-                foreach (var field in fields)
-                {
-                    ilEmitter.EmitFieldDeclaration(
-                        field.FieldType.Name.ToLower(),
-                        field.Name,
-                        field.IsPrivate);
-                }
-                
-                // Выводим конструкторы
-                var constructors = type.GetConstructors(
-                    System.Reflection.BindingFlags.Public | 
-                    System.Reflection.BindingFlags.NonPublic | 
-                    System.Reflection.BindingFlags.Instance);
-                
-                foreach (var ctor in constructors)
-                {
-                    var parameters = ctor.GetParameters();
-                    var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name.ToLower()} {p.Name}"));
-                    
-                    ilEmitter.EmitConstructorStart(paramStr);
-                    ilEmitter.EmitInstruction("ldarg.0");
-                    ilEmitter.EmitInstruction("call instance void [mscorlib]System.Object::.ctor()");
-                    ilEmitter.EmitConstructorEnd();
-                }
-                
-                // Выводим методы
-                var methods = type.GetMethods(
-                    System.Reflection.BindingFlags.Public | 
-                    System.Reflection.BindingFlags.NonPublic | 
-                    System.Reflection.BindingFlags.Instance | 
-                    System.Reflection.BindingFlags.DeclaredOnly);
-                
-                foreach (var method in methods)
-                {
-                    var parameters = method.GetParameters();
-                    var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name.ToLower()} {p.Name}"));
-                    
-                    ilEmitter.EmitMethodStart(
-                        method.Name,
-                        method.ReturnType.Name.ToLower(),
-                        paramStr);
-                    
-                    ilEmitter.EmitInstruction(".maxstack 8");
-                    ilEmitter.EmitReturn();
-                    
-                    ilEmitter.EmitMethodEnd();
-                }
-                
-                ilEmitter.EmitClassEnd();
+                Directory.Delete(buildDir, true);
             }
-            
-            Console.WriteLine("\n**[ DEBUG ] Generated MSIL Code:");
-            Console.WriteLine("========================================");
-            Console.WriteLine(ilEmitter.GetILCode());
-            Console.WriteLine("========================================");
+            Directory.CreateDirectory(buildDir);
+            DebugLog($"**[ DEBUG ] Build directory prepared: {buildDir}");
         }
-        // ============================================================
-        // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ КОДА
-        // ============================================================
-        
-        private static void PrintGeneratedIL(Assembly assembly, CodeGenerator codeGenerator)
+        catch (Exception ex)
         {
-            Console.WriteLine("\n**[ DEBUG ] Generated IL Instructions:");
-            Console.WriteLine("========================================");
-
-            try
-            {
-                // Получаем типы из CodeGenerator, а не из Assembly
-                var allTypes = codeGenerator.GetAllTypes();
-                
-                if (allTypes.Count == 0)
-                {
-                    Console.WriteLine("**[ INFO ] No user-defined types generated.");
-                    return;
-                }
-
-                foreach (var kvp in allTypes)
-                {
-                    var typeName = kvp.Key;
-                    var type = kvp.Value;
-
-                    Console.WriteLine($"\n--- Type: {typeName} ---");
-                    
-                    var constructors = type.GetConstructors(
-                        System.Reflection.BindingFlags.Public | 
-                        System.Reflection.BindingFlags.NonPublic | 
-                        System.Reflection.BindingFlags.Instance);
-
-                    if (constructors.Length > 0)
-                    {
-                        Console.WriteLine($"Constructors:");
-                        foreach (var ctor in constructors)
-                        {
-                            var parameters = ctor.GetParameters();
-                            var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                            Console.WriteLine($"  - .ctor({paramStr})");
-                        }
-                    }
-
-                    var methods = type.GetMethods(
-                        System.Reflection.BindingFlags.Public | 
-                        System.Reflection.BindingFlags.NonPublic | 
-                        System.Reflection.BindingFlags.Instance | 
-                        System.Reflection.BindingFlags.DeclaredOnly);
-
-                    if (methods.Length > 0)
-                    {
-                        Console.WriteLine($"Methods:");
-                        foreach (var method in methods)
-                        {
-                            var parameters = method.GetParameters();
-                            var paramStr = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                            Console.WriteLine($"  - {method.ReturnType.Name} {method.Name}({paramStr})");
-                        }
-                    }
-
-                    var fields = type.GetFields(
-                        System.Reflection.BindingFlags.Public | 
-                        System.Reflection.BindingFlags.NonPublic | 
-                        System.Reflection.BindingFlags.Instance | 
-                        System.Reflection.BindingFlags.DeclaredOnly);
-
-                    if (fields.Length > 0)
-                    {
-                        Console.WriteLine($"Fields:");
-                        foreach (var field in fields)
-                        {
-                            Console.WriteLine($"  - {field.FieldType.Name} {field.Name}");
-                        }
-                    }
-                }
-
-                Console.WriteLine("\n========================================");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"**[ WARN ] Could not retrieve IL information: {ex.Message}");
-            }
+            Console.WriteLine($"[ WARN ] Could not prepare build directory: {ex.Message}");
         }
-
+    }
     private static void SaveAssemblyToFile(CodeGenerator codeGenerator, string outputPath, bool asExecutable = false)
     {
-        Console.WriteLine($"**[ INFO ] Saving assembly to: {outputPath}");
+        DebugLog($"**[ DEBUG ] Saving assembly to: {outputPath}");
         
         try
         {
-            // ПРИМЕЧАНИЕ: В .NET Core/.NET 5+ прямое сохранение AssemblyBuilder недоступно
-            // Требуется использовать:
-            // - .NET 9+: PersistedAssemblyBuilder
-            // - Альтернатива: MetadataLoadContext или сторонние библиотеки
-            
             codeGenerator.SaveToFile(outputPath, asExecutable);
-            Console.WriteLine($"**[ OK ] Assembly saved successfully!");
         }
         catch (NotImplementedException)
         {
@@ -531,18 +393,19 @@ public class Program
     {
         try
         {
-            string json = @"{
-  ""runtimeOptions"": {
-    ""tfm"": ""net9.0"",
-    ""framework"": {
-      ""name"": ""Microsoft.NETCore.App"",
-      ""version"": ""9.0.0""
-    }
-  }
-}";
+            string json = 
+            @"{
+                ""runtimeOptions"": {
+                    ""tfm"": ""net9.0"",
+                    ""framework"": {
+                    ""name"": ""Microsoft.NETCore.App"",
+                    ""version"": ""9.0.0""
+                    }
+                }
+            }";
             
             File.WriteAllText(configPath, json);
-            Console.WriteLine($"**[ OK ] Runtime config created: {configPath}");
+            DebugLog($"**[ DEBUG ] Runtime config created: {configPath}");
         }
         catch (Exception ex)
         {
@@ -550,114 +413,39 @@ public class Program
         }
     }
 
-private static void ExecuteGeneratedAssembly(Assembly assembly)
-{
-    Console.WriteLine("\n**[ INFO ] Executing generated code...");
-    Console.WriteLine("========================================");
-    
-    try
+    private static void CopyOCompilerDll()
     {
-        // ИСПРАВЛЕНИЕ: Получаем типы из CodeGenerator, а не из Assembly
-        // Для динамических сборок Assembly.GetTypes() не работает
-        
-        // Вместо этого используем рефлексию для получения завершённых типов
-        var assemblyBuilder = assembly as AssemblyBuilder;
-        if (assemblyBuilder == null)
+        try
         {
-            Console.WriteLine("**[ ERR ] Assembly is not an AssemblyBuilder");
-            return;
-        }
-
-        // Получаем модуль
-        var modules = assemblyBuilder.GetLoadedModules();
-        Console.WriteLine($"**[ INFO ] Modules found: {modules.Length}");
-        if (modules.Length == 0)
-        {
-            Console.WriteLine("**[ WARN ] No modules found in assembly");
-            return;
-        }
-
-        var module = modules[0];
-        bool executed = false;
-
-        // Пытаемся найти типы через ModuleBuilder
-        if (module is ModuleBuilder moduleBuilder)
-        {
-            // Для динамических модулей нужно вручную отслеживать созданные типы
-            // Используем рефлексию для доступа к внутренним структурам
-            var types = GetTypesFromModuleBuilder(moduleBuilder);
-            
-            if (types.Count == 0)
+            // Get the path to OCompiler.dll (the compiler itself, which contains BuiltinTypes)
+            string ocompilerDll = typeof(Program).Assembly.Location;
+            if (string.IsNullOrEmpty(ocompilerDll))
             {
-                Console.WriteLine("**[ WARN ] No types found in module");
+                Console.WriteLine($"**[ WARN ] Could not locate OCompiler.dll");
                 return;
             }
 
-            foreach (var type in types)
-            {
-                // Пропускаем встроенные типы компилятора
-                if (type.Name.StartsWith("<") || type.IsAbstract || type.IsInterface)
-                    continue;
-                
-                var constructor = type.GetConstructor(Type.EmptyTypes);
-                if (constructor != null)
-                {
-                    Console.WriteLine($"**[ INFO ] Creating instance of class: {type.Name}");
-                    
-                    try
-                    {
-                        var instance = Activator.CreateInstance(type);
-                        Console.WriteLine($"**[ OK ] Instance created successfully!");
-                        
-                        // Опционально: вызов методов, если они есть
-                        var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
-                        if (mainMethod != null)
-                        {
-                            Console.WriteLine($"**[ INFO ] Calling method: Main()");
-                            mainMethod.Invoke(instance, null);
-                        }
-                        
-                        executed = true;
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"**[ ERR ] Runtime error: {ex.InnerException?.Message ?? ex.Message}");
-                        if (Environment.GetCommandLineArgs().Contains("--debug"))
-                        {
-                            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
-                        }
-                    }
-                }
-            }
+            string buildDir = Path.Combine(Directory.GetCurrentDirectory(), "build");
+            string destPath = Path.Combine(buildDir, "OCompiler.dll");
+            
+            File.Copy(ocompilerDll, destPath, overwrite: true);
+            DebugLog($"**[ DEBUG ] Copied OCompiler.dll to build directory");
         }
-        
-        if (!executed)
+        catch (Exception ex)
         {
-            Console.WriteLine("**[ WARN ] No executable entry point found.");
-            Console.WriteLine("**[ INFO ] Tried to find a class with parameterless constructor.");
+            Console.WriteLine($"**[ WARN ] Failed to copy OCompiler.dll: {ex.Message}");
         }
     }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"**[ ERR ] Execution failed: {ex.Message}");
-        if (Environment.GetCommandLineArgs().Contains("--debug"))
-        {
-            Console.WriteLine($"**[ DEBUG ] Stack trace:\n{ex.StackTrace}");
-        }
-    }
-    
-    Console.WriteLine("========================================\n");
-}
 
-// НОВАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
+
+// Helper function to get types from ModuleBuilder
 private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
 {
     var types = new List<Type>();
     
     try
     {
-        // Используем рефлексию для доступа к внутреннему полю _typeBuilderDict
+        // Use reflection to access internal _typeBuilderDict field
         var typeBuilderDictField = typeof(ModuleBuilder).GetField(
             "_typeBuilderDict",
             BindingFlags.NonPublic | BindingFlags.Instance);
@@ -671,7 +459,7 @@ private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
                 {
                     if (entry.Value is TypeBuilder tb)
                     {
-                        // Проверяем, что тип завершён
+                        // Check that type is completed
                         try
                         {
                             var createdType = tb.CreateType();
@@ -682,7 +470,7 @@ private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
                         }
                         catch
                         {
-                            // Тип уже был создан, пытаемся получить его через рефлексию
+                            // Type already created, try to get it via reflection
                             var createdTypeField = typeof(TypeBuilder).GetField(
                                 "_bakedRuntimeType",
                                 BindingFlags.NonPublic | BindingFlags.Instance);
@@ -711,12 +499,12 @@ private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
 
 
     // ============================================================
-    // СУЩЕСТВУЮЩИЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ)
+    // HELPER FUNCTIONS
     // ============================================================
 
     private static void RegisterStandardClasses(ClassHierarchy hierarchy)
     {
-        // Создаем минимальные объявления для стандартных классов
+        // Create minimal declarations for standard classes
         var standardClasses = new[]
         {
             ("Class", ""),
