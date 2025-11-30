@@ -9,7 +9,7 @@ class IntegerRealMixed is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Real()
         var i : IntegerRealMixed()
         res := i.mixedCalculation(100,11.1)

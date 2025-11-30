@@ -9,7 +9,7 @@ class IntegerUnaryMinus is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Integer()
         var i : IntegerUnaryMinus()
         res := i.negate(10)

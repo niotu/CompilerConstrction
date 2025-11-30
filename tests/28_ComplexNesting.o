@@ -23,7 +23,7 @@ class ArrayChecker is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Real()
         var a : ArrayChecker()
         var arr : Array[Integer](5)

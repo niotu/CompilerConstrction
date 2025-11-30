@@ -93,9 +93,7 @@ public class Program
         Console.WriteLine("  --save-assembly <path>  Save generated assembly to file (.dll)");
         Console.WriteLine("  --emit-exe <path>    Save as executable (.exe) with entry point");
         Console.WriteLine("  --emit-il            Print generated IL instructions (debug)");
-        Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (this() will be invoked)");
-        
-        Console.WriteLine();
+                Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (default: Main, this() will be invoked)");        Console.WriteLine();
         Console.WriteLine("** Test examples:");
         Console.WriteLine("  tests/01_Hello.o");
         Console.WriteLine("  tests/03_ArraySquare.o");
@@ -223,8 +221,18 @@ public class Program
         if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
         {
             Console.WriteLine("**[ INFO ] Starting AST optimizations...");
+            
+            // Parse entry point before optimization
+            var args = Environment.GetCommandLineArgs();
+            string? entryPoint = null;
+            int entryIdx = Array.IndexOf(args, "--entry-point");
+            if (entryIdx >= 0 && entryIdx + 1 < args.Length)
+            {
+                entryPoint = args[entryIdx + 1];
+            }
+            
             var optimizer = new Optimizer();
-            ast = optimizer.Optimize(ast);
+            ast = optimizer.Optimize(ast, entryPoint);
             
             if (Environment.GetCommandLineArgs().Contains("--ast"))
             {
@@ -334,7 +342,7 @@ public class Program
                     try
                     {
                         // Генерируем точку входа перед сохранением
-                        codeGenerator.GenerateEntryPoint();
+                        codeGenerator.GenerateEntryPoint(entryPoint);
                         // Emit into a fresh 'build' directory with a stable name 'output.dll'
                         EnsureFreshBuildDir();
                         string dllPath = Path.Combine(Directory.GetCurrentDirectory(), "build", "output.dll");
@@ -503,21 +511,10 @@ public class Program
                                 Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via Activator).");
                             }
 
-                            // If an instance was created, try to call its 'main' method
+                            // Конструктор this() уже выполнился при создании экземпляра
                             if (instance != null)
                             {
-                                var mainMethod = entryType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                                if (mainMethod != null)
-                                {
-                                    // If static, instance can be null
-                                    var target = mainMethod.IsStatic ? null : instance;
-                                    mainMethod.Invoke(target, null);
-                                    Console.WriteLine($"**[ OK ] Called '{entryPoint}.main()' via reflection.");
-                                }
-                                else
-                                {
-                                    Console.WriteLine($"**[ WARN ] No 'main' method found on '{entryPoint}'; entry constructor executed.");
-                                }
+                                Console.WriteLine($"**[ OK ] {entryPoint}.this() constructor executed successfully.");
                             }
                             return;
                         }
@@ -605,20 +602,10 @@ public class Program
                                 executed = true;
                             }
 
-                            // Try to call 'main' method on the instance (or static if defined)
+                            // Конструктор Main.this() уже выполнился при создании экземпляра
                             if (mainInstance != null)
                             {
-                                var mainMeth = mainType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                                if (mainMeth != null)
-                                {
-                                    var target = mainMeth.IsStatic ? null : mainInstance;
-                                    mainMeth.Invoke(target, null);
-                                    Console.WriteLine("**[ OK ] Called 'Main.main()' via reflection.");
-                                }
-                                else
-                                {
-                                    Console.WriteLine("**[ WARN ] 'Main' has no method 'main()' to invoke.");
-                                }
+                                Console.WriteLine("**[ OK ] Main.this() constructor executed successfully.");
                             }
                         }
                         catch (Exception ex)
@@ -638,14 +625,7 @@ public class Program
                                     var inst = Activator.CreateInstance(rt);
                                     Console.WriteLine("**[ OK ] Instance of 'Main' created via assembly lookup");
                                     executed = true;
-
-                                    var mainMeth = rt.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                                    if (mainMeth != null)
-                                    {
-                                        var target = mainMeth.IsStatic ? null : inst;
-                                        mainMeth.Invoke(target, null);
-                                        Console.WriteLine("**[ OK ] Called 'Main.main()' via assembly lookup.");
-                                    }
+                                    Console.WriteLine("**[ OK ] Main.this() constructor executed via assembly lookup.");
                                 }
                             }
                             catch (Exception ex2)
@@ -662,7 +642,7 @@ public class Program
                                 {
                                     Console.WriteLine("**[ INFO ] Falling back to interpreter execution for Main");
                                     var interpreter = new Interpreter(ast, hierarchy);
-                                    interpreter.ExecuteMethodByName("Main", "main");
+                                    interpreter.ExecuteConstructorByName("Main");
                                     executed = true;
                                 }
                                 catch (Exception iex)
@@ -708,17 +688,8 @@ public class Program
                                     Console.WriteLine($"**[ OK ] Instance created successfully (via Activator)!");
                                 }
 
-                                // Опционально: вызов метода Main() если есть
-                                var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
-                                if (mainMethod != null)
-                                {
-                                    Console.WriteLine($"**[ INFO ] Calling method: Main()");
-                                    var result = mainMethod.Invoke(instance, null);
-                                    if (result != null)
-                                    {
-                                        Console.WriteLine($"**[ INFO ] Result: {result}");
-                                    }
-                                }
+                                // Конструктор this() уже выполнился при создании экземпляра
+                                Console.WriteLine($"**[ INFO ] Constructor executed for type: {type.Name}");
 
                                 executed = true;
                                 break;

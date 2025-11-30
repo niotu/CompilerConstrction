@@ -15,7 +15,7 @@ class ListOperations is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Integer()
         var l : ListOperations()
         res := l.buildList()

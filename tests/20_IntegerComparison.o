@@ -21,7 +21,7 @@ class IntegerComparisons is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Boolean()
         var i : IntegerComparisons()
         res := i.compare(100,20)

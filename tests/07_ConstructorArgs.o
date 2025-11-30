@@ -13,7 +13,7 @@ class App is
 end
 
 class Main is
-    method main() is
+    this() is
         var app : App(1,2,3.8)
         app.x.Print()
     end

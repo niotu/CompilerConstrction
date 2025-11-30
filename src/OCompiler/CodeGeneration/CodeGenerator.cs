@@ -114,15 +114,18 @@ namespace OCompiler.CodeGeneration
         /// Generates a static entry point that invokes Main.this() constructor.
         /// Required for creating standalone .exe files.
         /// </summary>
-        public void GenerateEntryPoint()
+        public void GenerateEntryPoint(string? entryPointClassName = null)
         {
-            if (!_completedTypes.ContainsKey("Main"))
+            // По умолчанию используем класс Main
+            string entryClassName = entryPointClassName ?? "Main";
+            
+            if (!_completedTypes.ContainsKey(entryClassName))
             {
-                Console.WriteLine("**[ WARN ] No 'Main' class found; skipping entry point generation");
+                Console.WriteLine($"**[ WARN ] No '{entryClassName}' class found; skipping entry point generation");
                 return;
             }
 
-            Console.WriteLine("**[ INFO ] Generating entry point for executable...");
+            Console.WriteLine($"**[ INFO ] Generating entry point for executable (entry class: {entryClassName})...");
 
             // Create a Program type to hold the static Main method
             var programType = _moduleBuilder.DefineType(
@@ -140,64 +143,25 @@ namespace OCompiler.CodeGeneration
 
             var il = mainMethod.GetILGenerator();
 
-            // Get the user's Main class type
-            var mainClassType = _completedTypes["Main"];
+            // Get the user's entry class type
+            var entryClassType = _completedTypes[entryClassName];
 
-            // Try to find a method named "main" (case-sensitive) or "Main"
-            const BindingFlags mainMethodFlags =
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
-            var mainMethodInfo = mainClassType.GetMethod("main", mainMethodFlags)
-                                 ?? mainClassType.GetMethod("Main", mainMethodFlags);
+            // Точка входа - это конструктор {entryClassName}.this()
+            // Просто создаём экземпляр класса, конструктор выполнится автоматически
+            var entryConstructor = entryClassType.GetConstructor(Type.EmptyTypes);
 
-            if (mainMethodInfo == null)
+            if (entryConstructor == null)
             {
-                Console.WriteLine("**[ WARN ] No 'main' method found in class Main; entry point will be empty");
+                Console.WriteLine($"**[ WARN ] No parameterless constructor found in class {entryClassName}; entry point will be empty");
+                il.Emit(OpCodes.Ret);
             }
             else
             {
-                var parameters = mainMethodInfo.GetParameters();
-                bool acceptsArgs = parameters.Length == 1 && parameters[0].ParameterType == typeof(string[]);
-                if (parameters.Length > 0 && !acceptsArgs)
-                {
-                    Console.WriteLine("**[ WARN ] Main.main has unsupported signature. Expected () or (string[]). Entry point will not invoke it.");
-                }
-                else
-                {
-                    if (mainMethodInfo.IsStatic)
-                    {
-                        if (acceptsArgs)
-                        {
-                            // Pass through CLI args
-                            il.Emit(OpCodes.Ldarg_0);
-                        }
-                        mainMethodInfo = mainMethodInfo; // just for clarity
-                        il.Emit(OpCodes.Call, mainMethodInfo);
-                    }
-                    else
-                    {
-                        // Need an instance of Main
-                        var mainConstructor = mainClassType.GetConstructor(Type.EmptyTypes);
-                        if (mainConstructor == null)
-                        {
-                            Console.WriteLine("**[ ERR ] Instance method Main.main requires parameterless constructor; entry point cannot be generated");
-                        }
-                        else
-                        {
-                            var mainLocal = il.DeclareLocal(mainClassType);
-                            il.Emit(OpCodes.Newobj, mainConstructor);
-                            il.Emit(OpCodes.Stloc, mainLocal);
-                            il.Emit(OpCodes.Ldloc, mainLocal);
-                            if (acceptsArgs)
-                            {
-                                il.Emit(OpCodes.Ldarg_0);
-                            }
-                            il.Emit(OpCodes.Callvirt, mainMethodInfo);
-                        }
-                    }
-                }
+                // Создаём экземпляр entry класса, конструктор this() выполнится автоматически
+                il.Emit(OpCodes.Newobj, entryConstructor);
+                il.Emit(OpCodes.Pop); // Убираем созданный экземпляр со стека
+                il.Emit(OpCodes.Ret);
             }
-
-            il.Emit(OpCodes.Ret);
 
             // Finalize the Program type
             var programTypeCreated = programType.CreateTypeInfo().AsType();
@@ -290,6 +254,13 @@ namespace OCompiler.CodeGeneration
             // Регистрируем поля класса
             _methodGenerator.RegisterFields(classDecl.Name, fields);
 
+            // Сначала регистрируем все методы (создаём сигнатуры)
+            // чтобы они были доступны при генерации конструкторов
+            foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
+            {
+                _methodGenerator.DeclareMethod(typeBuilder, member, classDecl.Name);
+            }
+
             // Генерация конструкторов
             var hasConstructor = false;
             foreach (var member in classDecl.Members.OfType<ConstructorDeclaration>())
@@ -304,10 +275,10 @@ namespace OCompiler.CodeGeneration
                 GenerateDefaultConstructor(typeBuilder, classDecl, fields);
             }
 
-            // Генерация методов
+            // Генерация тел методов
             foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
             {
-                _methodGenerator.GenerateMethod(typeBuilder, member, fields, classDecl.Name);
+                _methodGenerator.GenerateMethodBody(typeBuilder, member, fields, classDecl.Name);
             }
         }
 

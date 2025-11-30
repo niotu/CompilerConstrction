@@ -11,7 +11,7 @@ end
 
 
 class Main is
-    method main() is
+    this() is
         var res : Real()
         var r : RealOperations()
         res := r.processReal(100.1)

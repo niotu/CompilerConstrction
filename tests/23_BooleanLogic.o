@@ -10,7 +10,7 @@ class BooleanLogic is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Integer()
         var r : BooleanLogic()
         res := r.logicTest(true,false)

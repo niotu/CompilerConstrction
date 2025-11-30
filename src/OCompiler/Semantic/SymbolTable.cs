@@ -55,6 +55,17 @@ namespace OCompiler.Semantic
             return null;
         }
 
+        // Проверка только в текущем scope (для обнаружения дубликатов)
+        public bool ExistsInCurrentScope(string name)
+        {
+            if (_scopes.Count > 0)
+            {
+                var currentScope = _scopes.Peek();
+                return currentScope.ContainsKey(name);
+            }
+            return false;
+        }
+
         public ClassDeclaration? LookupClass(string name) => _classes.GetValueOrDefault(name);
         public MethodDeclaration? LookupMethod(string name) => _methods.GetValueOrDefault(name);
         

@@ -17,7 +17,7 @@ class Calc is
 end
 
 class Main is
-    method main() is
+    this() is
         var calc : Calc()
         var result : Real()
         calc := calc.Add(3).Add(5.5).Add(4.5)

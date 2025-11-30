@@ -16,12 +16,21 @@ namespace OCompiler.CodeGeneration
         {
             /// <summary>Integer.Plus(x) - сложение</summary>
             public static int Plus(int self, int other) => self + other;
+            
+            /// <summary>Integer.Plus(x : Real) - сложение с Real, возвращает Real</summary>
+            public static double Plus(int self, double other) => (double)self + other;
 
             /// <summary>Integer.Minus(x) - вычитание</summary>
             public static int Minus(int self, int other) => self - other;
+            
+            /// <summary>Integer.Minus(x : Real) - вычитание с Real, возвращает Real</summary>
+            public static double Minus(int self, double other) => (double)self - other;
 
             /// <summary>Integer.Mult(x) - умножение</summary>
             public static int Mult(int self, int other) => self * other;
+            
+            /// <summary>Integer.Mult(x : Real) - умножение с Real, возвращает Real</summary>
+            public static double Mult(int self, double other) => (double)self * other;
 
             /// <summary>Integer.Div(x) - целочисленное деление</summary>
             public static int Div(int self, int divisor)
@@ -29,6 +38,14 @@ namespace OCompiler.CodeGeneration
                 if (divisor == 0)
                     throw new DivideByZeroException("Division by zero in Integer.Div");
                 return self / divisor;
+            }
+            
+            /// <summary>Integer.Div(x : Real) - деление с Real, возвращает Real</summary>
+            public static double Div(int self, double divisor)
+            {
+                if (divisor == 0)
+                    throw new DivideByZeroException("Division by zero in Integer.Div");
+                return (double)self / divisor;
             }
 
             /// <summary>Integer.Rem(x) - остаток от деления</summary>

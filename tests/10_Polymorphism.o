@@ -15,7 +15,7 @@ class Circle extends Shape is
 end
 
 class Main is
-    method main() is
+    this() is
         var s : Shape()
         s := Circle(2.0)
         var a : Real(s.Area())

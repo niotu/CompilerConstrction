@@ -205,7 +205,8 @@ MethodBody
     }
     | ARROW Expression
     {
-        $$.ast = $2.ast;
+        var returnStmt = new ReturnStatement((ExpressionNode)$2.ast);
+        $$.ast = new MethodBodyNode(new List<BodyElement> { returnStmt });
     }
     ;
 

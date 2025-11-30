@@ -1,0 +1,28 @@
+class Helper is
+    this() is
+        Integer(111).Print()
+    end
+    
+    method DoWork() : Integer is
+        return 222
+    end
+end
+
+class CustomEntry is
+    this() is
+        Integer(999).Print()
+        var h : Helper()
+        h.DoWork().Print()
+    end
+    method Do() : Integer is
+        return 101010
+    end
+end
+
+class Main is
+    this() is
+        Integer(777).Print()
+        var c : CustomEntry()
+        c.Do()
+    end
+end

@@ -452,7 +452,15 @@ namespace OCompiler.Semantic
                     }
                 }
 
-                // Обрабатываем конструкторы (где объявлены локальные переменные)
+                // СНАЧАЛА регистрируем все методы класса
+                foreach (var method in classDecl.Members.OfType<MethodDeclaration>())
+                {
+                    var methodFullName = $"{_currentClass}.{method.Header.Name}";
+                    _symbolTable.AddMethod(methodFullName, method);
+                }
+
+                // ЗАТЕМ проверяем конструкторы (где объявлены локальные переменные)
+                // К этому моменту методы уже зарегистрированы и могут быть вызваны
                 var constructors = classDecl.Members.OfType<ConstructorDeclaration>().ToList();
                 
                 foreach (var constructor in constructors)
@@ -460,10 +468,9 @@ namespace OCompiler.Semantic
                     CheckConstructorDeclarations(constructor);
                 }
 
-                // Обрабатываем методы
+                // И наконец проверяем тела методов
                 foreach (var method in classDecl.Members.OfType<MethodDeclaration>())
                 {
-                    _symbolTable.AddMethod($"{_currentClass}.{method.Header.Name}", method);
                     CheckMethodDeclarations(method);
                 }
                 
@@ -593,6 +600,19 @@ namespace OCompiler.Semantic
                     {
                         _errors.Add($"Variable '{assignment.Identifier}' used before declaration");
                     }
+                    
+                    // Проверяем конфликт: если справа вызов функции с тем же именем, что и переменная
+                    if (assignment.Expression is FunctionalCall funcCall && 
+                        funcCall.Function is IdentifierExpression funcIdent &&
+                        funcIdent.Name == assignment.Identifier)
+                    {
+                        // Проверяем, есть ли метод с таким именем
+                        if (!string.IsNullOrEmpty(_currentClass) && IsMethodExists(assignment.Identifier))
+                        {
+                            _errors.Add($"Semantic ambiguity: variable '{assignment.Identifier}' has the same name as a method");
+                        }
+                    }
+                    
                     CheckExpressionDeclarations(assignment.Expression);
                     break;
                     
@@ -631,10 +651,18 @@ namespace OCompiler.Semantic
         {
             _symbolTable.EnterScope();
             
-            // Сначала объявляем переменные
+            // Сначала объявляем переменные и проверяем дубликаты
             foreach (var element in body.Elements.OfType<VariableDeclaration>())
             {
-                // _symbolTable.AddSymbol(element.Identifier, new Symbol(element.Identifier, "Unknown"));
+                // Проверяем, не была ли переменная уже объявлена в текущем scope
+                if (_symbolTable.ExistsInCurrentScope(element.Identifier))
+                {
+                    _errors.Add($"Variable '{element.Identifier}' is already declared in this scope");
+                }
+                else
+                {
+                    _symbolTable.AddSymbol(element.Identifier, new Symbol(element.Identifier, "Unknown"));
+                }
             }
             
             // Затем проверяем использование
@@ -642,6 +670,12 @@ namespace OCompiler.Semantic
             {
                 if (element is VariableDeclaration varDecl)
                 {
+                    // Проверяем, не конфликтует ли имя переменной с методом
+                    if (!string.IsNullOrEmpty(_currentClass) && IsMethodExists(varDecl.Identifier))
+                    {
+                        _errors.Add($"Variable '{varDecl.Identifier}' conflicts with method name in class '{_currentClass}'");
+                    }
+                    
                     // Теперь переменная уже объявлена, можно проверять ее инициализатор
                     CheckExpressionDeclarations(varDecl.Expression);
                 }
@@ -664,10 +698,10 @@ namespace OCompiler.Semantic
                 }
                 var symbol = _symbolTable.Lookup(ident.Name);
         
-                // Если символ не найден в таблице, проверяем не является ли это классом или встроенным типом
+                // Если символ не найден в таблице, проверяем не является ли это классом, методом или встроенным типом
                 if (symbol == null)
                 {
-                    // Проверяем не является ли идентификатор именем класса
+                    // Проверяем не является ли идентификатор именем класса или метода
                     if (!_hierarchy.ClassExists(ident.Name) && 
                         !IsBuiltInType(ident.Name) && 
                         !IsMethodExists(ident.Name))
@@ -678,8 +712,12 @@ namespace OCompiler.Semantic
             }
             else if (expr is FunctionalCall funcCall)
             {
-                // Сначала проверяем саму функцию (может быть MemberAccessExpression)
-                CheckExpressionDeclarations(funcCall.Function);
+                // Для FunctionalCall с IdentifierExpression НЕ проверяем функцию как обычное выражение,
+                // потому что это может быть имя метода текущего класса
+                if (funcCall.Function is not IdentifierExpression)
+                {
+                    CheckExpressionDeclarations(funcCall.Function);
+                }
                 
                 // Затем проверяем аргументы
                 foreach (var arg in funcCall.Arguments)
@@ -1923,8 +1961,16 @@ namespace OCompiler.Semantic
                 var methods = _hierarchy.GetBuiltInMethods(targetType, methodName);
                 if (methods.Any())
                 {
-                    // Возвращаемый тип первой подходящей перегрузки с подстановкой T для контейнеров
-                    var ret = methods[0].ReturnType;
+                    // Вывести типы аргументов
+                    var argTypes = funcCall.Arguments.Select(InferExpressionType).ToList();
+                    
+                    // Найти подходящую перегрузку по типам параметров
+                    var matchingMethod = methods.FirstOrDefault(m => 
+                        m.Parameters.Count == argTypes.Count &&
+                        m.Parameters.Zip(argTypes, (param, arg) => AreTypesCompatible(arg, param.Type)).All(x => x)
+                    ) ?? methods[0]; // fallback к первой перегрузке
+                    
+                    var ret = matchingMethod.ReturnType;
                     if (ret == "T")
                     {
                         if (targetType.StartsWith("Array["))
@@ -2113,6 +2159,13 @@ namespace OCompiler.Semantic
                 
                 foreach (var varDecl in constructorVariables)
                 {
+                    // Проверяем дубликаты
+                    if (_symbolTable.ExistsInCurrentScope(varDecl.Identifier))
+                    {
+                        _errors.Add($"Variable '{varDecl.Identifier}' is already declared in this scope");
+                        continue;
+                    }
+                    
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
                         _symbolTable.AddSymbol(varDecl.Identifier, 

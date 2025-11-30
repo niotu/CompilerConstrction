@@ -1,5 +1,5 @@
 class Main is
-    method Max(arr : Array[Integer]) : Integer is
+    method max(arr : Array[Integer]) : Integer is
         var i : Integer(0)
         var max : Integer(arr.get(0))
         while i.Less(arr.Length) loop
@@ -11,15 +11,15 @@ class Main is
         return max
     end
 
-    method main() is
+    this() is
         var arr : Array[Integer](5)
         arr.set(0, 3)
         arr.set(1, 7)
         arr.set(2, 2)
         arr.set(3, 9)
         arr.set(4, 1)
-        var max : Integer(0)
-        max := Max(arr)
-        max.Print()
+        var res : Integer(0)
+        res := max(arr)
+        res.Print()
     end
 end

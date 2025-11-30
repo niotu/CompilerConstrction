@@ -21,7 +21,7 @@ class ArrayOperations is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Integer()
         var a : ArrayOperations()
         res := a.processArray()

@@ -20,8 +20,8 @@ namespace OCompiler.Semantic.Types
         {
             if (Equals(targetType)) return true;
 
-            // Integer -> Real widening
-            if (ReferenceEquals(this, Integer) && ReferenceEquals(targetType, Real)) return true;
+            // Integer -> Real widening is NOT allowed in O language (explicit conversion required)
+            // if (ReferenceEquals(this, Integer) && ReferenceEquals(targetType, Real)) return true;
 
             // Primitive to AnyValue
             if (ReferenceEquals(targetType, AnyValue)) return ReferenceEquals(this, Integer) || ReferenceEquals(this, Real) || ReferenceEquals(this, Boolean);

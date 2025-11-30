@@ -4,9 +4,6 @@ class Main is
     end
 
     this() is
-    end
-
-    method main() is
 
     end
 end

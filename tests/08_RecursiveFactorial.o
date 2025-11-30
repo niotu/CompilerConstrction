@@ -9,7 +9,7 @@ class Factorial is
 end
 
 class Main is
-    method main() is
+    this() is
         var f : Factorial()
         var result : Integer()
         result := f.fact(5)

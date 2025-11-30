@@ -15,7 +15,7 @@ class RealComparisons is
 end
 
 class Main is
-    method main() is
+    this() is
         var res : Boolean()
         var r : RealComparisons()
         res := r.compareReals(100.1,20.2)

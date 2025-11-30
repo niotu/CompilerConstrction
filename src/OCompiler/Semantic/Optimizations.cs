@@ -7,16 +7,20 @@ namespace OCompiler.Semantic
 {
     public class Optimizer
     {
-        public ProgramNode Optimize(ProgramNode program)
+        public ProgramNode Optimize(ProgramNode program, string? entryPointClassName = null)
         {
             var classes = program.Classes.ToList();
 
-            classes = RemoveUnusedMethods(classes, program);
+            // Dead Code Elimination
+            classes = RemoveUnusedClasses(classes, program, entryPointClassName ?? "Main");
+            classes = RemoveUnusedMethods(classes, program, entryPointClassName ?? "Main");
+            classes = RemoveUnusedVariables(classes);
+            
+            // Constant folding
             classes = ConstantFold(classes);
             classes = SimplifyConditionals(classes);
             classes = RemoveUnreachableCode(classes);
-            classes = RemoveUnusedVariables(classes);
-
+            
             classes = ConstantFold(classes);
             classes = SimplifyConditionals(classes);
             classes = RemoveUnreachableCode(classes);
@@ -25,8 +29,7 @@ namespace OCompiler.Semantic
         }
 
 
-        // 1) 
-                private ClassDeclaration OptimizeClass(ClassDeclaration classDecl)
+        private ClassDeclaration OptimizeClass(ClassDeclaration classDecl)
         {
             var optimizedMembers = classDecl.Members.Select(member =>
             {
@@ -73,9 +76,226 @@ namespace OCompiler.Semantic
         }
 
 
-        private List<ClassDeclaration> RemoveUnusedMethods(List<ClassDeclaration> classes, ProgramNode program)
+        private List<ClassDeclaration> RemoveUnusedClasses(List<ClassDeclaration> classes, ProgramNode program, string entryClassName)
         {
-            var usedMethods = CollectUsedMethods(classes, program);
+            // Собираем все используемые классы
+            var usedClasses = CollectUsedClasses(classes, program, entryClassName);
+            
+            var result = new List<ClassDeclaration>();
+            
+            foreach (var classDecl in classes)
+            {
+                // Всегда оставляем entry point класс
+                if (classDecl.Name == entryClassName)
+                {
+                    result.Add(classDecl);
+                    continue;
+                }
+                
+                // Проверяем, используется ли класс
+                bool isUsed = usedClasses.Contains(classDecl.Name);
+                
+                if (!isUsed)
+                {
+                    Console.WriteLine($"[OPTIMIZE] Removing unused class: {classDecl.Name}");
+                }
+                else
+                {
+                    result.Add(classDecl);
+                }
+            }
+            
+            return result;
+        }
+
+        private HashSet<string> CollectUsedClasses(List<ClassDeclaration> classes, ProgramNode program, string entryClassName)
+        {
+            var used = new HashSet<string>();
+            
+            // Entry point класс всегда используется
+            used.Add(entryClassName);
+            
+            // Начинаем обход с entry point
+            var mainClass = classes.FirstOrDefault(c => c.Name == entryClassName);
+            if (mainClass != null)
+            {
+                CollectUsedClassesFromClass(mainClass, used, classes, program);
+            }
+            
+            // Итеративно собираем все классы, пока не найдём все зависимости
+            bool changed = true;
+            while (changed)
+            {
+                changed = false;
+                var currentUsed = new HashSet<string>(used);
+                
+                foreach (var className in currentUsed)
+                {
+                    var classDecl = classes.FirstOrDefault(c => c.Name == className);
+                    if (classDecl != null)
+                    {
+                        int beforeCount = used.Count;
+                        CollectUsedClassesFromClass(classDecl, used, classes, program);
+                        if (used.Count > beforeCount)
+                        {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            
+            return used;
+        }
+
+        private void CollectUsedClassesFromClass(ClassDeclaration classDecl, HashSet<string> used, List<ClassDeclaration> classes, ProgramNode program)
+        {
+            // Если класс наследуется от другого, родительский класс используется
+            if (classDecl.Extension != null)
+            {
+                used.Add(classDecl.Extension);
+            }
+            
+            // Проходим по всем методам и конструкторам класса
+            foreach (var member in classDecl.Members)
+            {
+                if (member is MethodDeclaration method && method.Body != null)
+                {
+                    CollectUsedClassesFromBody(method.Body, used, classes, program);
+                }
+                else if (member is ConstructorDeclaration constructor)
+                {
+                    CollectUsedClassesFromBody(constructor.Body, used, classes, program);
+                }
+            }
+        }
+
+        private void CollectUsedClassesFromBody(MethodBodyNode body, HashSet<string> used, List<ClassDeclaration> classes, ProgramNode program)
+        {
+            foreach (var element in body.Elements)
+            {
+                CollectUsedClassesFromElement(element, used, classes, program);
+            }
+        }
+
+        private void CollectUsedClassesFromElement(BodyElement element, HashSet<string> used, List<ClassDeclaration> classes, ProgramNode program)
+        {
+            switch (element)
+            {
+                case ExpressionStatement exprStmt:
+                    CollectUsedClassesFromExpression(exprStmt.Expression, used, classes, program);
+                    break;
+                    
+                case Assignment assignment:
+                    CollectUsedClassesFromExpression(assignment.Expression, used, classes, program);
+                    break;
+                    
+                case VariableDeclaration varDecl:
+                    // Анализируем выражение инициализации переменной
+                    if (varDecl.Expression != null)
+                    {
+                        CollectUsedClassesFromExpression(varDecl.Expression, used, classes, program);
+                    }
+                    break;
+                    
+                case WhileLoop whileLoop:
+                    CollectUsedClassesFromExpression(whileLoop.Condition, used, classes, program);
+                    CollectUsedClassesFromBody(whileLoop.Body, used, classes, program);
+                    break;
+                    
+                case IfStatement ifStmt:
+                    CollectUsedClassesFromExpression(ifStmt.Condition, used, classes, program);
+                    CollectUsedClassesFromBody(ifStmt.ThenBody, used, classes, program);
+                    if (ifStmt.ElseBody != null)
+                    {
+                        CollectUsedClassesFromBody(ifStmt.ElseBody.Body, used, classes, program);
+                    }
+                    break;
+                    
+                case ReturnStatement returnStmt:
+                    if (returnStmt.Expression != null)
+                    {
+                        CollectUsedClassesFromExpression(returnStmt.Expression, used, classes, program);
+                    }
+                    break;
+            }
+        }
+
+        private void CollectUsedClassesFromExpression(ExpressionNode expr, HashSet<string> used, List<ClassDeclaration> classes, ProgramNode program)
+        {
+            switch (expr)
+            {
+                case ConstructorInvocation constr:
+                    // Конструктор - используется класс
+                    used.Add(constr.ClassName);
+                    foreach (var arg in constr.Arguments)
+                    {
+                        CollectUsedClassesFromExpression(arg, used, classes, program);
+                    }
+                    break;
+                    
+                case FunctionalCall funcCall:
+                    // Если это вызов конструктора через имя класса
+                    if (funcCall.Function is IdentifierExpression funcIdent)
+                    {
+                        var classDecl = classes.FirstOrDefault(c => c.Name == funcIdent.Name);
+                        if (classDecl != null)
+                        {
+                            used.Add(funcIdent.Name);
+                        }
+                    }
+                    
+                    // Обрабатываем аргументы
+                    foreach (var arg in funcCall.Arguments)
+                    {
+                        CollectUsedClassesFromExpression(arg, used, classes, program);
+                    }
+                    
+                    CollectUsedClassesFromExpression(funcCall.Function, used, classes, program);
+                    break;
+                    
+                case MemberAccessExpression memberAccess:
+                    CollectUsedClassesFromExpression(memberAccess.Target, used, classes, program);
+                    CollectUsedClassesFromExpression(memberAccess.Member, used, classes, program);
+                    break;
+                    
+                default:
+                    // Для других типов выражений рекурсивно обрабатываем дочерние выражения
+                    ProcessChildExpressionsForClasses(expr, used, classes, program);
+                    break;
+            }
+        }
+
+        private void ProcessChildExpressionsForClasses(ExpressionNode expr, HashSet<string> used, List<ClassDeclaration> classes, ProgramNode program)
+        {
+            var properties = expr.GetType().GetProperties();
+            foreach (var prop in properties)
+            {
+                if (typeof(ExpressionNode).IsAssignableFrom(prop.PropertyType))
+                {
+                    var childExpr = prop.GetValue(expr) as ExpressionNode;
+                    if (childExpr != null)
+                    {
+                        CollectUsedClassesFromExpression(childExpr, used, classes, program);
+                    }
+                }
+                else if (typeof(IEnumerable<ExpressionNode>).IsAssignableFrom(prop.PropertyType))
+                {
+                    var childExprs = prop.GetValue(expr) as IEnumerable<ExpressionNode>;
+                    if (childExprs != null)
+                    {
+                        foreach (var childExpr in childExprs)
+                        {
+                            CollectUsedClassesFromExpression(childExpr, used, classes, program);
+                        }
+                    }
+                }
+            }
+        }
+
+
+        private List<ClassDeclaration> RemoveUnusedMethods(List<ClassDeclaration> classes, ProgramNode program, string entryClassName)
+        {
+            var usedMethods = CollectUsedMethods(classes, program, entryClassName);
             var result = new List<ClassDeclaration>();
 
             
@@ -122,21 +342,16 @@ namespace OCompiler.Semantic
             return method.Header.Name == "this";
         }
 
-        private HashSet<string> CollectUsedMethods(List<ClassDeclaration> classes, ProgramNode program)
+        private HashSet<string> CollectUsedMethods(List<ClassDeclaration> classes, ProgramNode program, string entryClassName)
         {
             var used = new HashSet<string>();
             
-            // НОВОЕ: Добавляем точку входа (main/Main) как используемый метод
-            // Он не должен быть удалён оптимизатором
-            foreach (var classDecl in classes)
+            // Добавляем точку входа как используемый конструктор
+            // Конструкторы всегда используются, но this() entry point класса - особенная точка входа
+            var entryClass = classes.FirstOrDefault(c => c.Name == entryClassName);
+            if (entryClass != null)
             {
-                foreach (var method in classDecl.Members.OfType<MethodDeclaration>())
-                {
-                    if (method.Header.Name == "main" || method.Header.Name == "Main")
-                    {
-                        used.Add($"{classDecl.Name}.{method.Header.Name}");
-                    }
-                }
+                used.Add($"{entryClassName}.this");
             }
             
             // Сначала собираем все вызовы методов из тел методов и конструкторов
@@ -701,15 +916,37 @@ namespace OCompiler.Semantic
 
                         switch (method.Name)
                         {
-                            case "Plus": return new IntegerLiteral((a + b));
-                            case "Minus": return new IntegerLiteral((a - b));
-                            case "Mult": return new IntegerLiteral((a * b));
-                            case "Div": return b != 0 ? new IntegerLiteral((a / b)) : null;
-                            case "Less": return new BooleanLiteral((a < b));
-                            case "Greater": return new BooleanLiteral((a > b));
-                            case "Equal": return new BooleanLiteral((a == b));
-                            case "LessEqual": return new BooleanLiteral((a <= b));
-                            case "GreaterEqual": return new BooleanLiteral((a >= b));
+                            case "Plus":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Plus({b}) = {a + b}");
+                                return new IntegerLiteral((a + b));
+                            case "Minus":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Minus({b}) = {a - b}");
+                                return new IntegerLiteral((a - b));
+                            case "Mult":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Mult({b}) = {a * b}");
+                                return new IntegerLiteral((a * b));
+                            case "Div":
+                                if (b != 0)
+                                {
+                                    Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Div({b}) = {a / b}");
+                                    return new IntegerLiteral((a / b));
+                                }
+                                return null;
+                            case "Less":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Less({b}) = {a < b}");
+                                return new BooleanLiteral((a < b));
+                            case "Greater":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Greater({b}) = {a > b}");
+                                return new BooleanLiteral((a > b));
+                            case "Equal":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Equal({b}) = {a == b}");
+                                return new BooleanLiteral((a == b));
+                            case "LessEqual":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.LessEqual({b}) = {a <= b}");
+                                return new BooleanLiteral((a <= b));
+                            case "GreaterEqual":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.GreaterEqual({b}) = {a >= b}");
+                                return new BooleanLiteral((a >= b));
                         }
                     }
 
@@ -720,10 +957,18 @@ namespace OCompiler.Semantic
 
                         switch (method.Name)
                         {
-                            case "And": return new BooleanLiteral((a && b));
-                            case "Or": return new BooleanLiteral((a || b));
-                            case "Xor": return new BooleanLiteral((a ^ b));
-                            case "Equal": return new BooleanLiteral((a == b));
+                            case "And":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.And({b}) = {a && b}");
+                                return new BooleanLiteral((a && b));
+                            case "Or":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Or({b}) = {a || b}");
+                                return new BooleanLiteral((a || b));
+                            case "Xor":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Xor({b}) = {a ^ b}");
+                                return new BooleanLiteral((a ^ b));
+                            case "Equal":
+                                Console.WriteLine($"[OPTIMIZE] Constant folding: {a}.Equal({b}) = {a == b}");
+                                return new BooleanLiteral((a == b));
                         }
                     }
                 }
@@ -777,13 +1022,26 @@ namespace OCompiler.Semantic
                 if (e is IfStatement i && i.Condition is BooleanLiteral b)
                 {
                     if (b.Value)
+                    {
+                        Console.WriteLine($"[OPTIMIZE] Simplifying if(true): keeping then-branch");
                         list.AddRange(i.ThenBody.Elements);
+                    }
                     else if (i.ElseBody != null)
+                    {
+                        Console.WriteLine($"[OPTIMIZE] Simplifying if(false): keeping else-branch");
                         list.AddRange(i.ElseBody.Body.Elements);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[OPTIMIZE] Simplifying if(false): removing entire if-statement");
+                    }
                     continue;
                 }
                 if (e is WhileLoop w && w.Condition is BooleanLiteral bl && !bl.Value)
+                {
+                    Console.WriteLine($"[OPTIMIZE] Removing while(false) loop");
                     continue;
+                }
 
                 list.Add(e);
             }
@@ -816,12 +1074,27 @@ namespace OCompiler.Semantic
         private List<BodyElement> RemoveReturnTail(IEnumerable<BodyElement> elems)
         {
             var res = new List<BodyElement>();
+            bool foundReturn = false;
+            int removedCount = 0;
+            
             foreach (var e in elems)
             {
+                if (foundReturn)
+                {
+                    removedCount++;
+                    continue;
+                }
+                
                 res.Add(e);
                 if (e is ReturnStatement)
-                    break;
+                    foundReturn = true;
             }
+            
+            if (removedCount > 0)
+            {
+                Console.WriteLine($"[OPTIMIZE] Removing {removedCount} unreachable statement(s) after return");
+            }
+            
             return res;
         }
 
@@ -873,7 +1146,10 @@ namespace OCompiler.Semantic
                 {
                     // Пропускаем объявление, если переменная не используется
                     if (!used.Contains(v.Identifier))
+                    {
+                        Console.WriteLine($"[OPTIMIZE] Removing unused variable: {v.Identifier}");
                         continue;
+                    }
                 }
                 result.Add(e);
             }

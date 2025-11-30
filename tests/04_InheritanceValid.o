@@ -15,12 +15,12 @@ class Dog extends Animal is
 end
 
 class Main is
-    method main() is
+    this() is
         var a : Animal()
         var d : Dog()
-        Integer(a.Speak()).Print()
-        Integer(d.Speak()).Print()
-        Integer(a.Walk()).Print()
-        Integer(d.Walk()).Print()
+        a.Speak().Print()
+        d.Speak().Print()
+        a.Walk().Print()
+        d.Walk().Print()
     end
 end

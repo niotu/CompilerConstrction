@@ -10,7 +10,7 @@ class IntegerArithmetic is
 end
     
 class Main is
-    method main() is
+    this() is
         var remainder : Integer()
         var i : IntegerArithmetic()
         remainder := i.calculate(100,20)

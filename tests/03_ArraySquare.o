@@ -1,5 +1,5 @@
 class Main is
-    method main() is
+    this() is
         var a : Array[Integer](5)
         var i : Integer(0)
         while i.Less(a.Length) loop

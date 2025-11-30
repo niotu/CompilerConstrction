@@ -232,13 +232,12 @@ namespace OCompiler.CodeGeneration
         /// <summary>
         /// Генерирует метод класса.
         /// </summary>
-        public void GenerateMethod(
+        // Объявление метода (создание сигнатуры и регистрация)
+        public void DeclareMethod(
             TypeBuilder typeBuilder, 
             MethodDeclaration methodDecl,
-            Dictionary<string, FieldBuilder> fields,
             string className)
         {
-            _currentClassName = className;  // Track current class
             Type returnType = string.IsNullOrEmpty(methodDecl.Header.ReturnType)
                 ? typeof(void)
                 : _typeMapper.GetNetType(methodDecl.Header.ReturnType);
@@ -247,10 +246,10 @@ namespace OCompiler.CodeGeneration
                 .Select(p => _typeMapper.GetNetType(BuildTypeName(p.Type)))
                 .ToArray();
 
-            // Регистрируем метод
+            // Регистрируем метод в сигнатурах
             RegisterMethod(className, methodDecl.Header.Name, paramTypes, returnType);
 
-            // Все методы виртуальные для поддержки полиморфизма
+            // Создаём MethodBuilder (без генерации тела)
             var methodBuilder = typeBuilder.DefineMethod(
                 methodDecl.Header.Name,
                 MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig,
@@ -262,6 +261,43 @@ namespace OCompiler.CodeGeneration
                 _methodBuilders[className] = new List<(MethodBuilder, string, Type[], Type)>();
 
             _methodBuilders[className].Add((methodBuilder, methodDecl.Header.Name, paramTypes, returnType));
+
+            Console.WriteLine($"**[ DEBUG ]   Registered method: {className}.{methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
+        }
+
+        // Генерация тела метода
+        public void GenerateMethodBody(
+            TypeBuilder typeBuilder, 
+            MethodDeclaration methodDecl,
+            Dictionary<string, FieldBuilder> fields,
+            string className)
+        {
+            _currentClassName = className;
+
+            Type returnType = string.IsNullOrEmpty(methodDecl.Header.ReturnType)
+                ? typeof(void)
+                : _typeMapper.GetNetType(methodDecl.Header.ReturnType);
+
+            var paramTypes = methodDecl.Header.Parameters
+                .Select(p => _typeMapper.GetNetType(BuildTypeName(p.Type)))
+                .ToArray();
+
+            // Находим MethodBuilder, который создали в DeclareMethod
+            if (!_methodBuilders.TryGetValue(className, out var builders))
+            {
+                throw new InvalidOperationException($"No method builders found for class {className}");
+            }
+
+            var methodInfo = builders.FirstOrDefault(b =>
+                b.methodName == methodDecl.Header.Name &&
+                b.paramTypes.SequenceEqual(paramTypes, new TypeComparer()));
+
+            if (methodInfo.methodBuilder == null)
+            {
+                throw new InvalidOperationException($"Method {methodDecl.Header.Name} not found in builders for class {className}");
+            }
+
+            var methodBuilder = methodInfo.methodBuilder;
 
             if (methodDecl.Body == null)
             {
@@ -294,6 +330,17 @@ namespace OCompiler.CodeGeneration
             }
 
             Console.WriteLine($"**[ DEBUG ]   Method: {methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
+        }
+
+        // Старый метод для совместимости (если где-то ещё используется)
+        public void GenerateMethod(
+            TypeBuilder typeBuilder, 
+            MethodDeclaration methodDecl,
+            Dictionary<string, FieldBuilder> fields,
+            string className)
+        {
+            DeclareMethod(typeBuilder, methodDecl, className);
+            GenerateMethodBody(typeBuilder, methodDecl, fields, className);
         }
 
         private void GenerateMethodBodyContent(MethodBodyNode body)
@@ -1076,31 +1123,47 @@ namespace OCompiler.CodeGeneration
                 case "Plus":
                     if (arguments.Count != 1) throw new InvalidOperationException("Plus requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Plus")!);
+                    var argTypePlus = InferExpressionType(arguments[0]);
+                    if (argTypePlus == typeof(double))
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Plus", new[] { typeof(int), typeof(double) })!);
+                    else
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Plus", new[] { typeof(int), typeof(int) })!);
                     break;
 
                 case "Minus":
                     if (arguments.Count != 1) throw new InvalidOperationException("Minus requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Minus")!);
+                    var argTypeMinus = InferExpressionType(arguments[0]);
+                    if (argTypeMinus == typeof(double))
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Minus", new[] { typeof(int), typeof(double) })!);
+                    else
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Minus", new[] { typeof(int), typeof(int) })!);
                     break;
 
                 case "Mult":
                     if (arguments.Count != 1) throw new InvalidOperationException("Mult requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Mult")!);
+                    var argTypeMult = InferExpressionType(arguments[0]);
+                    if (argTypeMult == typeof(double))
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Mult", new[] { typeof(int), typeof(double) })!);
+                    else
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Mult", new[] { typeof(int), typeof(int) })!);
                     break;
 
                 case "Div":
                     if (arguments.Count != 1) throw new InvalidOperationException("Div requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Div")!);
+                    var argTypeDiv = InferExpressionType(arguments[0]);
+                    if (argTypeDiv == typeof(double))
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Div", new[] { typeof(int), typeof(double) })!);
+                    else
+                        _il!.Emit(OpCodes.Call, integerType.GetMethod("Div", new[] { typeof(int), typeof(int) })!);
                     break;
 
                 case "Rem":
                     if (arguments.Count != 1) throw new InvalidOperationException("Rem requires 1 argument");
                     GenerateExpression(arguments[0]);
-                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Rem")!);
+                    _il!.Emit(OpCodes.Call, integerType.GetMethod("Rem", new[] { typeof(int), typeof(int) })!);
                     break;
 
                 case "UnaryMinus":
