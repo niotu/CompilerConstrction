@@ -93,7 +93,9 @@ public class Program
         Console.WriteLine("  --save-assembly <path>  Save generated assembly to file (.dll)");
         Console.WriteLine("  --emit-exe <path>    Save as executable (.exe) with entry point");
         Console.WriteLine("  --emit-il            Print generated IL instructions (debug)");
-                Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (default: Main, this() will be invoked)");        Console.WriteLine();
+        Console.WriteLine("  --entry-point <Class> Specify the class to use as program entry point (this() will be invoked)");
+        
+        Console.WriteLine();
         Console.WriteLine("** Test examples:");
         Console.WriteLine("  tests/01_Hello.o");
         Console.WriteLine("  tests/03_ArraySquare.o");
@@ -221,18 +223,8 @@ public class Program
         if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
         {
             Console.WriteLine("**[ INFO ] Starting AST optimizations...");
-            
-            // Parse entry point before optimization
-            var args = Environment.GetCommandLineArgs();
-            string? entryPoint = null;
-            int entryIdx = Array.IndexOf(args, "--entry-point");
-            if (entryIdx >= 0 && entryIdx + 1 < args.Length)
-            {
-                entryPoint = args[entryIdx + 1];
-            }
-            
             var optimizer = new Optimizer();
-            ast = optimizer.Optimize(ast, entryPoint);
+            ast = optimizer.Optimize(ast);
             
             if (Environment.GetCommandLineArgs().Contains("--ast"))
             {
@@ -315,14 +307,7 @@ public class Program
                     Console.WriteLine($"**[ INFO ] --save-assembly flag: {outputPath}");
                     try
                     {
-                        // Always emit into a fresh 'build' directory
-                        EnsureFreshBuildDir();
-                        string buildDll = Path.Combine(Directory.GetCurrentDirectory(), "build", "output.dll");
-                        SaveAssemblyToFile(codeGenerator, buildDll, asExecutable: false);
-                        // Create runtimeconfig alongside output
-                        CreateRuntimeConfig(Path.Combine(Directory.GetCurrentDirectory(), "build", "output.runtimeconfig.json"));
-                        // Try to copy referenced assemblies into the build folder
-                        CopyReferencedAssemblies(generatedAssembly);
+                        SaveAssemblyToFile(codeGenerator, outputPath, asExecutable: false);
                     }
                     catch (Exception ex)
                     {
@@ -342,18 +327,15 @@ public class Program
                     try
                     {
                         // Генерируем точку входа перед сохранением
-                        codeGenerator.GenerateEntryPoint(entryPoint);
-                        // Emit into a fresh 'build' directory with a stable name 'output.dll'
-                        EnsureFreshBuildDir();
-                        string dllPath = Path.Combine(Directory.GetCurrentDirectory(), "build", "output.dll");
+                        codeGenerator.GenerateEntryPoint();
+                        
+                        // Переименовываем в .dll (так как .NET 9 PersistedAssemblyBuilder создаёт управляемые сборки)
+                        string dllPath = Path.ChangeExtension(outputPath, ".dll");
                         SaveAssemblyToFile(codeGenerator, dllPath, asExecutable: true);
-
-                        // Create runtimeconfig.json next to the DLL
-                        string configPath = Path.Combine(Directory.GetCurrentDirectory(), "build", "output.runtimeconfig.json");
+                        
+                        // Создаём .runtimeconfig.json для запуска сборки
+                        string configPath = Path.ChangeExtension(outputPath, ".runtimeconfig.json");
                         CreateRuntimeConfig(configPath);
-
-                        // Try to copy referenced assemblies into the build folder
-                        CopyReferencedAssemblies(generatedAssembly);
                         
                         Console.WriteLine();
                         Console.WriteLine("**[ INFO ] ========================================");
@@ -511,10 +493,21 @@ public class Program
                                 Console.WriteLine($"**[ OK ] Instance of '{entryPoint}' created successfully (via Activator).");
                             }
 
-                            // Конструктор this() уже выполнился при создании экземпляра
+                            // If an instance was created, try to call its 'main' method
                             if (instance != null)
                             {
-                                Console.WriteLine($"**[ OK ] {entryPoint}.this() constructor executed successfully.");
+                                var mainMethod = entryType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                                if (mainMethod != null)
+                                {
+                                    // If static, instance can be null
+                                    var target = mainMethod.IsStatic ? null : instance;
+                                    mainMethod.Invoke(target, null);
+                                    Console.WriteLine($"**[ OK ] Called '{entryPoint}.main()' via reflection.");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"**[ WARN ] No 'main' method found on '{entryPoint}'; entry constructor executed.");
+                                }
                             }
                             return;
                         }
@@ -602,10 +595,20 @@ public class Program
                                 executed = true;
                             }
 
-                            // Конструктор Main.this() уже выполнился при создании экземпляра
+                            // Try to call 'main' method on the instance (or static if defined)
                             if (mainInstance != null)
                             {
-                                Console.WriteLine("**[ OK ] Main.this() constructor executed successfully.");
+                                var mainMeth = mainType.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                                if (mainMeth != null)
+                                {
+                                    var target = mainMeth.IsStatic ? null : mainInstance;
+                                    mainMeth.Invoke(target, null);
+                                    Console.WriteLine("**[ OK ] Called 'Main.main()' via reflection.");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("**[ WARN ] 'Main' has no method 'main()' to invoke.");
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -625,7 +628,14 @@ public class Program
                                     var inst = Activator.CreateInstance(rt);
                                     Console.WriteLine("**[ OK ] Instance of 'Main' created via assembly lookup");
                                     executed = true;
-                                    Console.WriteLine("**[ OK ] Main.this() constructor executed via assembly lookup.");
+
+                                    var mainMeth = rt.GetMethod("main", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                                    if (mainMeth != null)
+                                    {
+                                        var target = mainMeth.IsStatic ? null : inst;
+                                        mainMeth.Invoke(target, null);
+                                        Console.WriteLine("**[ OK ] Called 'Main.main()' via assembly lookup.");
+                                    }
                                 }
                             }
                             catch (Exception ex2)
@@ -642,7 +652,7 @@ public class Program
                                 {
                                     Console.WriteLine("**[ INFO ] Falling back to interpreter execution for Main");
                                     var interpreter = new Interpreter(ast, hierarchy);
-                                    interpreter.ExecuteConstructorByName("Main");
+                                    interpreter.ExecuteMethodByName("Main", "main");
                                     executed = true;
                                 }
                                 catch (Exception iex)
@@ -688,8 +698,17 @@ public class Program
                                     Console.WriteLine($"**[ OK ] Instance created successfully (via Activator)!");
                                 }
 
-                                // Конструктор this() уже выполнился при создании экземпляра
-                                Console.WriteLine($"**[ INFO ] Constructor executed for type: {type.Name}");
+                                // Опционально: вызов метода Main() если есть
+                                var mainMethod = type.GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
+                                if (mainMethod != null)
+                                {
+                                    Console.WriteLine($"**[ INFO ] Calling method: Main()");
+                                    var result = mainMethod.Invoke(instance, null);
+                                    if (result != null)
+                                    {
+                                        Console.WriteLine($"**[ INFO ] Result: {result}");
+                                    }
+                                }
 
                                 executed = true;
                                 break;
@@ -900,85 +919,6 @@ public class Program
         catch (Exception ex)
         {
             Console.WriteLine($"**[ WARN ] Failed to create runtime config: {ex.Message}");
-        }
-    }
-
-    // Ensure a fresh build directory exists at './build' (delete if present)
-    private static void EnsureFreshBuildDir()
-    {
-        try
-        {
-            var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "build");
-            if (Directory.Exists(buildDir))
-            {
-                Directory.Delete(buildDir, true);
-            }
-            Directory.CreateDirectory(buildDir);
-            Console.WriteLine($"**[ OK ] Build directory prepared: {buildDir}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"**[ WARN ] Could not prepare build directory: {ex.Message}");
-        }
-    }
-
-    // Try to copy referenced assemblies with a physical location into the build folder
-    private static void CopyReferencedAssemblies(Assembly? assembly)
-    {
-        try
-        {
-            var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "build");
-            
-            // First, copy the OCompiler assembly (the compiler itself) if it exists
-            try
-            {
-                var ocompilerAsm = typeof(CodeGenerator).Assembly;
-                var ocompilerLoc = ocompilerAsm.Location;
-                if (!string.IsNullOrEmpty(ocompilerLoc) && File.Exists(ocompilerLoc))
-                {
-                    var dest = Path.Combine(buildDir, Path.GetFileName(ocompilerLoc));
-                    if (!File.Exists(dest))
-                    {
-                        File.Copy(ocompilerLoc, dest);
-                        Console.WriteLine($"**[ INFO ] Copied: {Path.GetFileName(ocompilerLoc)}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"**[ DEBUG ] Could not copy OCompiler: {ex.Message}");
-            }
-            
-            // Then, try to copy other referenced assemblies
-            if (assembly != null)
-            {
-                var refs = assembly.GetReferencedAssemblies();
-                foreach (var r in refs)
-                {
-                    try
-                    {
-                        var asm = Assembly.Load(r);
-                        var loc = asm.Location;
-                        if (!string.IsNullOrEmpty(loc) && File.Exists(loc))
-                        {
-                            var dest = Path.Combine(buildDir, Path.GetFileName(loc));
-                            if (!File.Exists(dest))
-                            {
-                                File.Copy(loc, dest);
-                                Console.WriteLine($"**[ INFO ] Copied dependency: {Path.GetFileName(loc)}");
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // ignore failures for framework assemblies
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"**[ WARN ] CopyReferencedAssemblies failed: {ex.Message}");
         }
     }
 

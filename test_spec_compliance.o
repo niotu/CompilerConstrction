@@ -1,0 +1,117 @@
+// Тест на соответствие спецификации Project O
+
+// 1. Проверка extends (наследование)
+class Base is
+    var value: Integer(10)
+    
+    method getValue(): Integer is
+        return value
+    end
+    
+    this() is
+    end
+end
+
+class Derived extends Base is
+    method doubleValue(): Integer is
+        var val: Integer(this.getValue())
+        return val.Mult(2)
+    end
+    
+    this() is
+    end
+end
+
+// 2. Проверка полиморфизма (виртуальные методы)
+class Animal is
+    method speak(): Integer is
+        return 1
+    end
+    
+    this() is
+    end
+end
+
+class Dog extends Animal is
+    method speak(): Integer is
+        return 2
+    end
+    
+    this() is
+    end
+end
+
+// 3. Проверка forward declaration
+class TestForward is
+    method first(): Integer
+    
+    method second(): Integer is
+        return this.first()
+    end
+    
+    method first(): Integer is
+        return 42
+    end
+    
+    this() is
+    end
+end
+
+// 4. Проверка короткого синтаксиса методов
+class ShortSyntax is
+    method getConstant(): Integer => 100
+    
+    method add(x: Integer, y: Integer): Integer => x.Plus(y)
+    
+    this() is
+    end
+end
+
+// 5. Проверка overloading
+class Overload is
+    method process(x: Integer): Integer is
+        return x
+    end
+    
+    method process(x: Real): Real is
+        return x
+    end
+    
+    this() is
+    end
+end
+
+class Main is
+    this() is
+        // Тест 1: наследование
+        var d: Derived()
+        var baseValue: Integer(d.getValue())
+        baseValue.Print()
+        
+        var doubleVal: Integer(d.doubleValue())
+        doubleVal.Print()
+        
+        // Тест 2: полиморфизм
+        var dog: Dog()
+        var sound: Integer(dog.speak())
+        sound.Print()
+        
+        // Тест 3: forward declaration
+        var tf: TestForward()
+        var fwd: Integer(tf.first())
+        fwd.Print()
+        
+        // Тест 4: короткий синтаксис
+        var ss: ShortSyntax()
+        var const: Integer(ss.getConstant())
+        const.Print()
+        
+        var sum: Integer(ss.add(15, 25))
+        sum.Print()
+        
+        // Тест 5: overloading
+        var ov: Overload()
+        var intRes: Integer(ov.process(123))
+        intRes.Print()
+    end
+end
