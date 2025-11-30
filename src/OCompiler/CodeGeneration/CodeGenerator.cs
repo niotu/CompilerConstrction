@@ -29,6 +29,7 @@ namespace OCompiler.CodeGeneration
         private readonly Dictionary<string, Type> _completedTypes;
         private readonly ClassHierarchy _hierarchy;
         private readonly string _assemblyName;
+        private readonly Dictionary<string, Dictionary<string, FieldBuilder>> _classFields;
 
         public CodeGenerator(string assemblyName, ClassHierarchy hierarchy)
         {
@@ -36,6 +37,7 @@ namespace OCompiler.CodeGeneration
             _hierarchy = hierarchy;
             _typeBuilders = new Dictionary<string, TypeBuilder>();
             _completedTypes = new Dictionary<string, Type>();
+            _classFields = new Dictionary<string, Dictionary<string, FieldBuilder>>();
 
             // Создаём динамическую сборку
             var assemblyNameObj = new AssemblyName(assemblyName);
@@ -251,34 +253,55 @@ namespace OCompiler.CodeGeneration
                 fields[member.Identifier] = field;
             }
             
-            // Регистрируем поля класса
-            _methodGenerator.RegisterFields(classDecl.Name, fields);
+            // Сохраняем поля текущего класса для использования в производных классах
+            _classFields[classDecl.Name] = fields;
+            
+            // Собираем поля из базовых классов для доступа в методах производного класса
+            var allAccessibleFields = CollectAllAccessibleFields(classDecl.Name, fields);
+            
+            // Регистрируем все доступные поля (включая из базовых классов)
+            _methodGenerator.RegisterFields(classDecl.Name, allAccessibleFields);
 
             // Сначала регистрируем все методы (создаём сигнатуры)
             // чтобы они были доступны при генерации конструкторов
+            // Пропускаем forward declarations (без тела)
             foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
             {
-                _methodGenerator.DeclareMethod(typeBuilder, member, classDecl.Name);
+                if (member.Body != null)
+                {
+                    _methodGenerator.DeclareMethod(typeBuilder, member, classDecl.Name);
+                }
             }
 
-            // Генерация конструкторов
-            var hasConstructor = false;
+            // Объявляем конструкторы (создаём ConstructorBuilder, регистрируем, но не генерируем тела)
+            var constructorBuilders = new List<(ConstructorBuilder, ConstructorDeclaration)>();
             foreach (var member in classDecl.Members.OfType<ConstructorDeclaration>())
             {
-                _methodGenerator.GenerateConstructor(typeBuilder, member, classDecl, fields);
-                hasConstructor = true;
+                var ctorBuilder = _methodGenerator.DeclareConstructor(typeBuilder, member, classDecl.Name);
+                constructorBuilders.Add((ctorBuilder, member));
             }
 
             // Если нет явного конструктора, создаём конструктор по умолчанию
-            if (!hasConstructor)
+            if (constructorBuilders.Count == 0)
             {
-                GenerateDefaultConstructor(typeBuilder, classDecl, fields);
+                GenerateDefaultConstructor(typeBuilder, classDecl, allAccessibleFields);
+            }
+            else
+            {
+                // Генерируем тела конструкторов
+                foreach (var (ctorBuilder, ctorDecl) in constructorBuilders)
+                {
+                    _methodGenerator.GenerateConstructorBody(typeBuilder, ctorBuilder, ctorDecl, classDecl, allAccessibleFields);
+                }
             }
 
-            // Генерация тел методов
+            // Генерация тел методов (пропускаем forward declarations без тела)
             foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
             {
-                _methodGenerator.GenerateMethodBody(typeBuilder, member, fields, classDecl.Name);
+                if (member.Body != null)
+                {
+                    _methodGenerator.GenerateMethodBody(typeBuilder, member, allAccessibleFields, classDecl.Name);
+                }
             }
         }
 
@@ -363,6 +386,43 @@ namespace OCompiler.CodeGeneration
             Console.WriteLine($"**[ DEBUG ]   Field: {varDecl.Identifier} : {fieldType.Name}");
 
             return fieldBuilder;
+        }
+
+        /// <summary>
+        /// Собирает все доступные поля включая поля базовых классов
+        /// </summary>
+        private Dictionary<string, FieldBuilder> CollectAllAccessibleFields(string className, Dictionary<string, FieldBuilder> ownFields)
+        {
+            var allFields = new Dictionary<string, FieldBuilder>(ownFields);
+            
+            // Получаем базовый класс
+            var classDecl = _hierarchy.GetClass(className);
+            if (classDecl != null && !string.IsNullOrEmpty(classDecl.Extension))
+            {
+                var baseClassName = classDecl.Extension;
+                Console.WriteLine($"**[ DEBUG ]   Collecting fields from base class: {baseClassName}");
+                
+                // Рекурсивно собираем поля базовых классов
+                if (_classFields.TryGetValue(baseClassName, out var baseFields))
+                {
+                    Console.WriteLine($"**[ DEBUG ]   Found {baseFields.Count} fields in base class {baseClassName}");
+                    foreach (var kvp in baseFields)
+                    {
+                        // Не перезаписываем, если в производном классе есть поле с таким же именем
+                        if (!allFields.ContainsKey(kvp.Key))
+                        {
+                            allFields[kvp.Key] = kvp.Value;
+                            Console.WriteLine($"**[ DEBUG ]   Added base field: {kvp.Key}");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"**[ WARN ]   Base class {baseClassName} has no registered fields");
+                }
+            }
+            
+            return allFields;
         }
 
         /// <summary>

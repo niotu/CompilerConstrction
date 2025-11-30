@@ -141,15 +141,13 @@ namespace OCompiler.CodeGeneration
         }
 
         /// <summary>
-        /// Генерирует конструктор класса.
+        /// Объявляет конструктор класса (создает ConstructorBuilder без генерации тела).
         /// </summary>
-        public void GenerateConstructor(
-            TypeBuilder typeBuilder, 
-            ConstructorDeclaration ctorDecl, 
-            ClassDeclaration classDecl,
-            Dictionary<string, FieldBuilder> fields)
+        public ConstructorBuilder DeclareConstructor(
+            TypeBuilder typeBuilder,
+            ConstructorDeclaration ctorDecl,
+            string className)
         {
-            _currentClassName = classDecl.Name;  // Track current class
             var paramTypes = ctorDecl.Parameters
                 .Select(p => _typeMapper.GetNetType(BuildTypeName(p.Type)))
                 .ToArray();
@@ -160,7 +158,25 @@ namespace OCompiler.CodeGeneration
                 paramTypes);
 
             // Регистрируем конструктор
-            RegisterConstructor(classDecl.Name, paramTypes, ctorBuilder);
+            RegisterConstructor(className, paramTypes, ctorBuilder);
+            
+            return ctorBuilder;
+        }
+
+        /// <summary>
+        /// Генерирует тело конструктора класса.
+        /// </summary>
+        public void GenerateConstructorBody(
+            TypeBuilder typeBuilder,
+            ConstructorBuilder ctorBuilder,
+            ConstructorDeclaration ctorDecl, 
+            ClassDeclaration classDecl,
+            Dictionary<string, FieldBuilder> fields)
+        {
+            _currentClassName = classDecl.Name;
+            var paramTypes = ctorDecl.Parameters
+                .Select(p => _typeMapper.GetNetType(BuildTypeName(p.Type)))
+                .ToArray();
 
             _il = ctorBuilder.GetILGenerator();
             _locals = new Dictionary<string, LocalBuilder>();
@@ -180,29 +196,36 @@ namespace OCompiler.CodeGeneration
             // Вызов конструктора базового класса
             _il.Emit(OpCodes.Ldarg_0); // this
 
-            ConstructorInfo? baseConstructor;
+            ConstructorInfo? baseConstructor = null;
             
-            if (typeBuilder.BaseType == typeof(object))
+            // Получаем имя базового класса из декларации
+            string? baseClassName = classDecl.Extension;
+            
+            if (!string.IsNullOrEmpty(baseClassName) && baseClassName != "object")
             {
-                baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
+                // Пытаемся получить зарегистрированный конструктор базового класса
+                var registeredCtor = GetRegisteredConstructor(baseClassName, Type.EmptyTypes);
+                if (registeredCtor != null)
+                {
+                    baseConstructor = registeredCtor;
+                    Console.WriteLine($"**[ DEBUG ]   Calling base constructor: {baseClassName}()");
+                }
+                else
+                {
+                    Console.WriteLine($"**[ WARN ]   No parameterless constructor found for {baseClassName}, using object()");
+                    baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
+                }
             }
             else
             {
-                try
-                {
-                    baseConstructor = typeBuilder.BaseType!.GetConstructor(Type.EmptyTypes);
-                }
-                catch (NotSupportedException)
-                {
-                    Console.WriteLine($"**[ WARN ] Cannot get base constructor, using object()");
-                    baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
-                }
+                // Базовый класс - object
+                baseConstructor = typeof(object).GetConstructor(Type.EmptyTypes);
             }
 
             if (baseConstructor == null)
             {
                 throw new InvalidOperationException(
-                    $"Parameterless constructor not found for base type '{typeBuilder.BaseType?.Name}'");
+                    $"Parameterless constructor not found for base class '{baseClassName ?? "object"}'");
             }
 
             _il.Emit(OpCodes.Call, baseConstructor);
@@ -227,6 +250,19 @@ namespace OCompiler.CodeGeneration
             _il.Emit(OpCodes.Ret);
 
             Console.WriteLine($"**[ DEBUG ]   Constructor: this({string.Join(", ", paramTypes.Select(t => t.Name))})");
+        }
+
+        /// <summary>
+        /// Генерирует конструктор класса (объявление + тело) - wrapper метод для обратной совместимости.
+        /// </summary>
+        public void GenerateConstructor(
+            TypeBuilder typeBuilder, 
+            ConstructorDeclaration ctorDecl, 
+            ClassDeclaration classDecl,
+            Dictionary<string, FieldBuilder> fields)
+        {
+            var ctorBuilder = DeclareConstructor(typeBuilder, ctorDecl, classDecl.Name);
+            GenerateConstructorBody(typeBuilder, ctorBuilder, ctorDecl, classDecl, fields);
         }
 
         /// <summary>

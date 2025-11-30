@@ -1647,6 +1647,10 @@ namespace OCompiler.Semantic
 
         private void CheckMethodReturnStatements(MethodDeclaration method)
         {
+            // Пропускаем forward declarations (без тела)
+            if (method.Body == null)
+                return;
+                
             if (!string.IsNullOrEmpty(method.Header.ReturnType))
             {
                 var returnStatements = CollectReturnStatements(method.Body);
@@ -1769,7 +1773,30 @@ namespace OCompiler.Semantic
                         if (member is MethodDeclaration method)
                         {
                             var signature = BuildMethodSignature(method);
-                            if (methodSignatures.Contains(signature))
+                            
+                            // Forward declaration (Body == null) может дублировать полную реализацию
+                            // Проверяем только среди методов с телом или среди forward declarations
+                            bool isDuplicate = false;
+                            
+                            foreach (var otherMember in classDecl.Members.OfType<MethodDeclaration>())
+                            {
+                                if (otherMember == method) continue;
+                                
+                                var otherSignature = BuildMethodSignature(otherMember);
+                                if (signature == otherSignature)
+                                {
+                                    // Разрешаем одну пару: forward + implementation
+                                    // Запрещаем: два forward или две implementation
+                                    if ((method.Body == null && otherMember.Body == null) ||
+                                        (method.Body != null && otherMember.Body != null))
+                                    {
+                                        isDuplicate = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            if (isDuplicate && !methodSignatures.Contains(signature))
                             {
                                 _errors.Add($"Duplicate method signature '{signature}' in class '{classDecl.Name}'");
                             }
