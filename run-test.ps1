@@ -50,7 +50,7 @@ function Get-TestType {
     
     # Тесты 01-10, 19-28 - валидные
     # Тесты 11-18 - невалидные (ожидаем ошибки)
-    if (($TestNumber -ge 1 -and $TestNumber -le 10) -or ($TestNumber -ge 19 -and $TestNumber -le 28)) {
+    if (($TestNumber -ge 1 -and $TestNumber -le 10) -or ($TestNumber -ge 19 -and $TestNumber -le 30)) {
         return "Valid"
     } else {
         return "Invalid"
@@ -58,6 +58,52 @@ function Get-TestType {
 }
 
 # Функция для форматирования времени выполнения
+function Invoke-Process {
+    param(
+        [string]$FileName,
+        [string]$Arguments
+    )
+
+    $Output = ""
+    $ExitCode = 0
+
+    try {
+        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $ProcessInfo.FileName = $FileName
+        $ProcessInfo.Arguments = $Arguments
+        $ProcessInfo.RedirectStandardOutput = $true
+        $ProcessInfo.RedirectStandardError = $true
+        $ProcessInfo.UseShellExecute = $false
+        $ProcessInfo.CreateNoWindow = $true
+
+        $Process = New-Object System.Diagnostics.Process
+        $Process.StartInfo = $ProcessInfo
+
+        $Process.Start() | Out-Null
+
+        $stdout = $Process.StandardOutput.ReadToEnd()
+        $stderr = $Process.StandardError.ReadToEnd()
+
+        $Process.WaitForExit()
+        $ExitCode = $Process.ExitCode
+
+        $Output = $stdout
+        if ($stderr) {
+            $Output += "`n`nSTDERR:`n$stderr"
+        }
+    }
+    catch {
+        $Output = "EXCEPTION: $($_.Exception.Message)"
+        $ExitCode = -1
+    }
+
+    return @{
+        Output   = $Output
+        ExitCode = $ExitCode
+    }
+}
+
+
 function Format-Duration {
     param([TimeSpan]$Duration)
     
@@ -83,56 +129,61 @@ function Run-Test {
     Write-Host "Running: $TestName ($TestType)" -ForegroundColor $InfoColor
     Write-Host "========================================" -ForegroundColor $InfoColor
     
-    # Запускаем компилятор и перехватываем вывод
-    $Output = ""
-    $ExitCode = 0
-    
-    try {
-        # Используем Start-Process для перехвата вывода
-        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
-        $ProcessInfo.FileName = $BuildOutput
-        $ProcessInfo.Arguments = "`"$TestFile`""
-        $ProcessInfo.RedirectStandardOutput = $true
-        $ProcessInfo.RedirectStandardError = $true
-        $ProcessInfo.UseShellExecute = $false
-        $ProcessInfo.CreateNoWindow = $true
-        
-        $Process = New-Object System.Diagnostics.Process
-        $Process.StartInfo = $ProcessInfo
-        
-        $Process.Start() | Out-Null
-        
-        $stdout = $Process.StandardOutput.ReadToEnd()
-        $stderr = $Process.StandardError.ReadToEnd()
-        
-        $Process.WaitForExit()
-        $ExitCode = $Process.ExitCode
-        
-        $Output = $stdout
-        if ($stderr) {
-            $Output += "`n`nSTDERR:`n$stderr"
-        }
+    # -------------------------------
+    # 1) Запуск компилятора
+    # -------------------------------
+    $compileResult = Invoke-Process -FileName $BuildOutput -Arguments "`"$TestFile`""
+    $CompileOutput = $compileResult.Output
+    $CompileExitCode = $compileResult.ExitCode
+
+    # Путь к скомпилированной DLL (предполагаем, что компилятор всегда генерирует одно и то же имя)
+    $OutputDll = Join-Path $ProjectDir "output.dll"
+
+    # -------------------------------
+    # 2) Запуск dotnet output.dll (только если компиляция успешна и DLL существует)
+    # -------------------------------
+    $RunOutput = ""
+    $RunExitCode = $null
+
+    if (($CompileExitCode -eq 0) -and (Test-Path $OutputDll)) {
+        $runResult = Invoke-Process -FileName "dotnet" -Arguments "`"$OutputDll`""
+        $RunOutput = $runResult.Output
+        $RunExitCode = $runResult.ExitCode
     }
-    catch {
-        $Output = "EXCEPTION: $($_.Exception.Message)"
-        $ExitCode = -1
-    }
-    
+
     $EndTime = Get-Date
     $Duration = $EndTime - $StartTime
-    
+
+    # -------------------------------
     # Определяем успешность теста
+    # -------------------------------
     $Success = $false
-    
+
     if ($TestType -eq "Valid") {
-        # Для валидных тестов успех = выход с кодом 0 и наличие "OK" в выводе
-        $Success = ($ExitCode -eq 0) -and ($Output -match "\*\*\[\s*OK\s*\].*completed successfully")
-    } else {
-        # Для невалидных тестов успех = выход с кодом 1 и наличие ошибки
-        $Success = ($ExitCode -ne 0) -and ($Output -match "\*\*\[\s*ERR\s*\]")
+        # Для валидных: компиляция ОК и программа завершилась с кодом 0
+        $Success = ($CompileExitCode -eq 0) -and
+                   ($CompileOutput -match "\*\*\[\s*OK\s*\].*completed successfully") -and
+                   ($RunExitCode -eq 0)
     }
-    
-    # Формируем результат для файла
+    else {
+        # Для невалидных: ожидается ошибка компиляции
+        $Success = ($CompileExitCode -ne 0) -and
+                   ($CompileOutput -match "\*\*\[\s*ERR\s*\]")
+    }
+
+    # -------------------------------
+    # Формируем текст отчёта
+    # -------------------------------
+    $CombinedOutput = @"
+=== COMPILER OUTPUT =================================
+$CompileOutput
+=====================================================
+
+=== PROGRAM RUN (dotnet output.dll) ================
+$(if ($RunOutput) { $RunOutput } else { "Not executed (compile error or missing output.dll)" })
+=====================================================
+"@
+
     $ResultContent = @"
 ========================================
 O Language Compiler - Test Result
@@ -141,27 +192,28 @@ Test File:    $TestName
 Test Type:    $TestType
 Date:         $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 Duration:     $(Format-Duration $Duration)
-Exit Code:    $ExitCode
+Compile Exit: $CompileExitCode
+Run Exit:     $(if ($RunExitCode -ne $null) { $RunExitCode } else { "N/A" })
 Status:       $(if ($Success) { "PASSED OK" } else { "FAILED ERR" })
 ========================================
 
-COMPILER OUTPUT:
+
+OUTPUT DETAILS:
 ========================================
-$Output
+$CombinedOutput
 ========================================
+
 
 TEST ANALYSIS:
 ========================================
-Expected:     $(if ($TestType -eq "Valid") { "Successful compilation (exit 0)" } else { "Compilation error (exit != 0)" })
-Actual:       $(if ($ExitCode -eq 0) { "Exit code 0 (success)" } else { "Exit code $ExitCode (error)" })
+Expected:     $(if ($TestType -eq "Valid") { "Successful compilation and execution (exit 0)" } else { "Compilation error (exit != 0)" })
+Actual:       Compile=$CompileExitCode; Run=$(if ($RunExitCode -ne $null) { $RunExitCode } else { "N/A" })
 Result:       $(if ($Success) { "TEST PASSED OK" } else { "TEST FAILED ERR" })
 ========================================
 "@
     
-    # Сохраняем результат в файл
     Set-Content -Path $ResultFile -Value $ResultContent -Encoding UTF8
     
-    # Выводим краткий результат в консоль
     if ($Success) {
         Write-Host "OK PASSED" -ForegroundColor $SuccessColor -NoNewline
         Write-Host " - $TestName" -ForegroundColor $SuccessColor -NoNewline
@@ -173,15 +225,15 @@ Result:       $(if ($Success) { "TEST PASSED OK" } else { "TEST FAILED ERR" })
         
         if ($Verbose) {
             Write-Host "`nOutput preview:" -ForegroundColor $WarningColor
-            Write-Host ($Output -split "`n" | Select-Object -First 10 | Out-String) -ForegroundColor Gray
+            Write-Host ($CombinedOutput -split "`n" | Select-Object -First 10 | Out-String) -ForegroundColor Gray
         }
     }
     
     return @{
-        Success = $Success
-        Duration = $Duration
-        TestType = $TestType
-        ExitCode = $ExitCode
+        Success   = $Success
+        Duration  = $Duration
+        TestType  = $TestType
+        ExitCode  = $CompileExitCode  # для статистики оставляем код компиляции
     }
 }
 

@@ -31,10 +31,9 @@ namespace OCompiler.Semantic
                 {
                     var existing = currentScope[name];
                     
-                    // ВРЕМЕННО: НЕ позволяем перезаписывать Array на Unknown
                     if (existing.Type == "Array" && symbol.Type == "Unknown")
                     {
-                        return; // Не перезаписываем!
+                        return; 
                     }
                 }
                 
@@ -66,10 +65,6 @@ namespace OCompiler.Semantic
             return false;
         }
 
-        public ClassDeclaration? LookupClass(string name) => _classes.GetValueOrDefault(name);
-        public MethodDeclaration? LookupMethod(string name) => _methods.GetValueOrDefault(name);
-        
-        public bool IsClassExists(string name) => _classes.ContainsKey(name);
         public bool IsMethodExists(string name) => _methods.ContainsKey(name);
         public void UpdateSymbol(string name, Symbol newSymbol)
         {

@@ -131,10 +131,11 @@ public class Program
             return; // Stop after lexical analysis
         }
 
-        if (Environment.GetCommandLineArgs().Contains("--tokens-to-file"))
+        if (Environment.GetCommandLineArgs().Contains("--tokens"))
         {
-            PrintTokensToFile(tokens);
+            PrintTokens(tokens);
         }
+
 
         // ============================================================
         // PHASE 2: SYNTAX ANALYSIS
