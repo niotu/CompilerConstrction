@@ -9,16 +9,9 @@ public class TokenValue
     public bool Boolean;
 }
 
-public class TokenInfo
+public class TokenInfo(Token token, TokenValue value, Position position)
 {
-    public Token Token { get; }
-    public TokenValue Value { get; }
-    public Position Position { get; }
-
-    public TokenInfo(Token token, TokenValue value, Position position)
-    {
-        Token = token;
-        Value = value;
-        Position = position;
-    }
+    public Token Token { get; } = token;
+    public TokenValue Value { get; } = value;
+    public Position Position { get; } = position;
 }

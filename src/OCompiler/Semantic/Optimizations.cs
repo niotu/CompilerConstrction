@@ -546,7 +546,7 @@ namespace OCompiler.Semantic
             CollectMethodCallsFromExpression(funcCall.Function, used, currentClass, program);
         }
         
-        private string FindMethodClassInHierarchy(string methodName, string className, ProgramNode program)
+        private string? FindMethodClassInHierarchy(string methodName, string className, ProgramNode program)
         {
             var classDecl = program.Classes.FirstOrDefault(c => c.Name == className);
             while (classDecl != null)
@@ -722,7 +722,7 @@ namespace OCompiler.Semantic
             return currentClass; // fallback
         }
 
-        private string ExtractTypeFromExpression(ExpressionNode expr)
+        private string? ExtractTypeFromExpression(ExpressionNode expr)
         {
             if (expr is IdentifierExpression typeIdent)
             {
@@ -752,7 +752,7 @@ namespace OCompiler.Semantic
             return null;
         }
 
-        private string DetermineMethodName(ExpressionNode function)
+        private string? DetermineMethodName(ExpressionNode function)
         {
             switch (function)
             {
@@ -884,7 +884,7 @@ namespace OCompiler.Semantic
         }
 
 
-        private ExpressionNode TryEvalMethod(ExpressionNode func, List<ExpressionNode> args)
+        private ExpressionNode? TryEvalMethod(ExpressionNode func, List<ExpressionNode> args)
         {
             // Сначала нормализуем левую часть - функция может быть MemberAccessExpression с FunctionalCall или ConstructorInvocation
             if (func is MemberAccessExpression ma)

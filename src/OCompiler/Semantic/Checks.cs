@@ -6,7 +6,7 @@ using OCompiler.Semantic.Types;
 
 namespace OCompiler.Semantic
 {
-    public class SemanticChecker
+    public class SemanticChecker(ClassHierarchy hierarchy)
     {
         private readonly SymbolTable _symbolTable = new();
         private readonly List<string> _errors = new();
@@ -14,15 +14,10 @@ namespace OCompiler.Semantic
         public IReadOnlyList<string> Warnings => _warnings;
         private string? _currentClass;
         private string? _currentMethod;
-        private readonly ClassHierarchy _hierarchy;
+        private readonly ClassHierarchy _hierarchy = hierarchy;
         private bool _inLoop = false;
 
         public IReadOnlyList<string> Errors => _errors;
-
-        public SemanticChecker(ClassHierarchy hierarchy)
-        {
-            _hierarchy = hierarchy;
-        }
 
         public void Check(ProgramNode program)
         {
@@ -178,7 +173,7 @@ namespace OCompiler.Semantic
             return element;
         }
 
-        private ExpressionNode TransformConstructorCallsInExpression(ExpressionNode expr, HashSet<string> classNames)
+        private ExpressionNode? TransformConstructorCallsInExpression(ExpressionNode expr, HashSet<string> classNames)
         {
             if (expr == null) return null;
             
@@ -256,7 +251,7 @@ namespace OCompiler.Semantic
             }
         }
 
-        private void CheckMemberKeywordUsage(MemberDeclaration member, ClassDeclaration classDecl = null)
+        private void CheckMemberKeywordUsage(MemberDeclaration member, ClassDeclaration? classDecl = null)
         {
             switch (member)
             {
@@ -347,7 +342,7 @@ namespace OCompiler.Semantic
             }
         }
 
-        private void CheckVariableKeywordUsage(VariableDeclaration varDecl, ClassDeclaration classDecl = null)
+        private void CheckVariableKeywordUsage(VariableDeclaration varDecl, ClassDeclaration? classDecl = null)
         {
             // 1. Check that 'var' has an initializer
             if (varDecl.Expression == null)
@@ -1269,7 +1264,7 @@ namespace OCompiler.Semantic
                 }
             }
         }
-        private void CheckVariableType(VariableDeclaration varDecl, ClassDeclaration classDecl = null)
+        private void CheckVariableType(VariableDeclaration varDecl, ClassDeclaration? classDecl = null)
         {
             if (varDecl.Expression == null) return;
 
@@ -2032,7 +2027,7 @@ namespace OCompiler.Semantic
                 _ => null
             };
         }
-        private string ExtractMethodNameFromMemberAccess(MemberAccessExpression memberAccess)
+        private string? ExtractMethodNameFromMemberAccess(MemberAccessExpression memberAccess)
         {
             // Для цепочек вида obj.method или arr.get
             if (memberAccess.Member is IdentifierExpression memberIdent)
@@ -2108,7 +2103,7 @@ namespace OCompiler.Semantic
             return ReferenceTypeSymbol.Create(typeName, baseType);
         }
 
-        private void AddClassVariable(VariableDeclaration varDecl, ClassDeclaration classDecl = null)
+        private void AddClassVariable(VariableDeclaration varDecl, ClassDeclaration? classDecl = null)
         {
             if (varDecl.Expression is ConstructorInvocation constr)
             {
@@ -2664,8 +2659,8 @@ namespace OCompiler.Semantic
             }
         }
 
-        // Helper methods for working with array expressions
-        private ExpressionNode GetArrayExpressionFromGetCall(FunctionalCall getCall)
+        // Вспомогательные методы для работы с выражениями массивов
+        private ExpressionNode? GetArrayExpressionFromGetCall(FunctionalCall getCall)
         {
             if (getCall.Function is MemberAccessExpression memberAccess)
             {
@@ -2674,7 +2669,7 @@ namespace OCompiler.Semantic
             return null;
         }
 
-        private ExpressionNode GetArrayExpressionFromSetCall(FunctionalCall setCall)
+        private ExpressionNode? GetArrayExpressionFromSetCall(FunctionalCall setCall)
         {
             if (setCall.Function is MemberAccessExpression memberAccess)
             {

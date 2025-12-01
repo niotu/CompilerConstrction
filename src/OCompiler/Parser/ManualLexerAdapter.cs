@@ -6,15 +6,11 @@ using QUT.Gppg;
 
 namespace OCompiler.Parser
 {
-    public class ManualLexerAdapter : AbstractScanner<ValueType, LexLocation>
+    public class ManualLexerAdapter(IEnumerable<Token> tokenStream) : AbstractScanner<ValueType, LexLocation>
     {
-        private readonly IEnumerator<Token> _tokenStream;
+        private readonly IEnumerator<Token> _tokenStream = tokenStream.GetEnumerator();
         private int _lastLine = 1;
         private int _lastColumn = 1;
-        public ManualLexerAdapter(IEnumerable<Token> tokenStream)
-        {
-            _tokenStream = tokenStream.GetEnumerator();
-        }
 
         public override int yylex()
         {

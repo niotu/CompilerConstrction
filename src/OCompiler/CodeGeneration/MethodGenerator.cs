@@ -11,18 +11,18 @@ namespace OCompiler.CodeGeneration
     /// <summary>
     /// Генератор IL-кода для методов и конструкторов.
     /// </summary>
-    public class MethodGenerator
+    public class MethodGenerator(TypeMapper typeMapper, ClassHierarchy hierarchy, CodeGenerator? codeGenerator = null, ProgramNode? programAst = null)
     {
-        private readonly TypeMapper _typeMapper;
-        private readonly ClassHierarchy _hierarchy;
-        private readonly CodeGenerator? _codeGenerator;
-        private readonly ProgramNode? _programAst;
+        private readonly TypeMapper _typeMapper = typeMapper;
+        private readonly ClassHierarchy _hierarchy = hierarchy;
+        private readonly CodeGenerator? _codeGenerator = codeGenerator;
+        private readonly ProgramNode? _programAst = programAst;
         
         // Словари для кэширования информации о методах и конструкторах
-        private readonly Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>> _constructors;
-        private readonly Dictionary<string, List<(string methodName, Type[] paramTypes, Type returnType)>> _methodSignatures;
-        private readonly Dictionary<string, List<(MethodBuilder methodBuilder, string methodName, Type[] paramTypes, Type returnType)>> _methodBuilders;
-        private readonly Dictionary<string, Dictionary<string, FieldBuilder>> _classFields; // Поля всех классов
+        private readonly Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>> _constructors = new Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>>();
+        private readonly Dictionary<string, List<(string methodName, Type[] paramTypes, Type returnType)>> _methodSignatures = new Dictionary<string, List<(string, Type[], Type)>>();
+        private readonly Dictionary<string, List<(MethodBuilder methodBuilder, string methodName, Type[] paramTypes, Type returnType)>> _methodBuilders = new Dictionary<string, List<(MethodBuilder, string, Type[], Type)>>();
+        private readonly Dictionary<string, Dictionary<string, FieldBuilder>> _classFields = new Dictionary<string, Dictionary<string, FieldBuilder>>(); // Поля всех классов
         
         private ILGenerator? _il;
         private Dictionary<string, LocalBuilder>? _locals;
@@ -41,20 +41,6 @@ namespace OCompiler.CodeGeneration
         }
         private Dictionary<string, Type>? _parameterTypes;
         private string? _currentClassName;  // Track which class we're currently generating
-
-        public MethodGenerator(TypeMapper typeMapper, ClassHierarchy hierarchy, CodeGenerator? codeGenerator = null, ProgramNode? programAst = null)
-        {
-            _typeMapper = typeMapper;
-            _hierarchy = hierarchy;
-            _codeGenerator = codeGenerator;
-            _programAst = programAst;
-            
-            // Инициализируем словари
-            _constructors = new Dictionary<string, List<(ConstructorBuilder ctor, Type[] paramTypes)>>();
-            _methodSignatures = new Dictionary<string, List<(string, Type[], Type)>>();
-            _methodBuilders = new Dictionary<string, List<(MethodBuilder, string, Type[], Type)>>();
-            _classFields = new Dictionary<string, Dictionary<string, FieldBuilder>>();
-        }
 
         /// <summary>
         /// Helper to reconstruct full type name from ClassNameNode (handles generic types like Array[Integer])

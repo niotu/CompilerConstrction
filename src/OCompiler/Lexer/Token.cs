@@ -5,18 +5,11 @@ namespace OCompiler.Lexer;
 /// <summary>
 /// O language token
 /// </summary>
-public readonly struct Token : IEquatable<Token>
+public readonly struct Token(TokenType type, string value, Position position) : IEquatable<Token>
 {
-    public TokenType Type { get; }
-    public string Value { get; }
-    public Position Position { get; }
-
-    public Token(TokenType type, string value, Position position)
-    {
-        Type = type;
-        Value = value ?? string.Empty;
-        Position = position;
-    }
+    public TokenType Type { get; } = type;
+    public string Value { get; } = value ?? string.Empty;
+    public Position Position { get; } = position;
 
     public Token(TokenType type, Position position) : this(type, string.Empty, position)
     {
