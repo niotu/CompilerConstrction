@@ -21,7 +21,7 @@ dotnet build
 3. Run(generate executable and run it)
 
 ```shell
-dotnet run --project src/OCompiler -- tests/01_Hello.o --emit-exe app.exe
+dotnet run --project src/OCompiler -- tests/01_Hello.o
 dotnet build/output.dll
 ```
 
