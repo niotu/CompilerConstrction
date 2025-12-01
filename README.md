@@ -4,7 +4,7 @@ The `O` language is Object-Oriented programming language with support of OOP.
 
 **Key points about the language.**
 
-- Each file should contain a `class Main` class declaration and `method main() is` method declaration. It's will be considered as an **Entry point** of the file. 
+- Each file should contain a `class Main` class declaration and `method main() is` method declaration. It's will be considered as an **Entry point** of the file.
 
 - Learn about [Architecture](ARCHITECTURE.md) of the language.
 
