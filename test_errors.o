@@ -1,9 +1,0 @@
-class TestErrors is
-    method test() : Integer is
-        var x : Integer(5)
-        var y : Integer(x.BadMethod())
-        var z : Integer(this.AnotherBadMethod())
-        return Boolean(true)
-    end
-    this() is end
-end
