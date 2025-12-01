@@ -179,7 +179,7 @@ namespace OCompiler.CodeGeneration
             // Store the entry point method for later use in SaveToFile
             // (PersistedAssemblyBuilder doesn't have SetEntryPoint, we'll handle this during Save)
             _entryPointMethod = mainMethod;
-            Console.WriteLine("**[ OK ] Entry point method registered: <Program>.Main(string[])");
+            Console.WriteLine($"**[ OK ] Entry point method registered: <Program>.Main(string[]) → {entryClassName}.this()");
         }
 
         private MethodBuilder? _entryPointMethod = null;

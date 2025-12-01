@@ -312,8 +312,8 @@ public class Program
 
                 try
                 {
-                    // Generate entry point before saving
-                    codeGenerator.GenerateEntryPoint();
+                    // Generate entry point before saving (pass the custom entry point if specified)
+                    codeGenerator.GenerateEntryPoint(entryPoint);
                     DebugLog("**[ DEBUG ] Generated entry point");
                     // Emit into a fresh 'build' directory
                     EnsureFreshBuildDir();
