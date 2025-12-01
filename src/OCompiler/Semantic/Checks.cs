@@ -510,6 +510,13 @@ namespace OCompiler.Semantic
                 
                 foreach (var varDecl in methodVariables)
                 {
+                    // Проверяем дубликаты
+                    if (_symbolTable.ExistsInCurrentScope(varDecl.Identifier))
+                    {
+                        _errors.Add($"Variable '{varDecl.Identifier}' is already declared in this scope");
+                        continue;
+                    }
+                    
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
                         var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
