@@ -1316,19 +1316,19 @@ namespace OCompiler.Semantic
                 
                 foreach (var member in classDecl.Members.OfType<MethodDeclaration>())
                 {
-                    CheckConstructorCallsInMethod(member);
+                    CheckConstructorCallsInMethod(member, program);
                 }
                 
                 foreach (var constructor in classDecl.Members.OfType<ConstructorDeclaration>())
                 {
-                    CheckConstructorCallsInConstructor(constructor);
+                    CheckConstructorCallsInConstructor(constructor, program);
                 }
                 
                 _symbolTable.ExitScope();
             }
         }
 
-        private void CheckConstructorCallsInMethod(MethodDeclaration method)
+        private void CheckConstructorCallsInMethod(MethodDeclaration method, ProgramNode program)
         {
             if (method.Body == null) return;
             
@@ -1364,7 +1364,11 @@ namespace OCompiler.Semantic
                     {
                         CheckBuiltInConstructorCall(constr);
                     }
-                    else if (!_hierarchy.ClassExists(constr.ClassName))
+                    else if (_hierarchy.ClassExists(constr.ClassName))
+                    {
+                        CheckUserDefinedConstructorCall(constr, program);
+                    }
+                    else
                     {
                         _errors.Add($"Constructor call for unknown class '{constr.ClassName}'");
                     }
@@ -1381,14 +1385,17 @@ namespace OCompiler.Semantic
         
             foreach (var constructorCall in constructorCalls)
             {
-                if (!_hierarchy.ClassExists(constructorCall.ClassName) && 
-                    !_hierarchy.IsBuiltInClass(constructorCall.ClassName))
-                {
-                    _errors.Add($"Constructor call for unknown class '{constructorCall.ClassName}'");
-                }
-                else if (_hierarchy.IsBuiltInClass(constructorCall.ClassName))
+                if (_hierarchy.IsBuiltInClass(constructorCall.ClassName))
                 {
                     CheckBuiltInConstructorCall(constructorCall);
+                }
+                else if (_hierarchy.ClassExists(constructorCall.ClassName))
+                {
+                    CheckUserDefinedConstructorCall(constructorCall, program);
+                }
+                else
+                {
+                    _errors.Add($"Constructor call for unknown class '{constructorCall.ClassName}'");
                 }
             }
             
@@ -1443,7 +1450,55 @@ namespace OCompiler.Semantic
             }
         }
 
-        private void CheckConstructorCallsInConstructor(ConstructorDeclaration constructor)
+        private void CheckUserDefinedConstructorCall(ConstructorInvocation constr, ProgramNode program)
+        {
+            // Находим класс в AST
+            var classDecl = program.Classes.FirstOrDefault(c => c.Name == constr.ClassName);
+            if (classDecl == null) return;
+            
+            // Находим конструкторы класса
+            var constructors = classDecl.Members.OfType<ConstructorDeclaration>().ToList();
+            
+            if (constructors.Count == 0)
+            {
+                // Если конструкторов нет, должен быть конструктор по умолчанию без параметров
+                if (constr.Arguments.Count > 0)
+                {
+                    _errors.Add($"No constructor found for '{constr.ClassName}' with {constr.Arguments.Count} arguments (class has no explicit constructors)");
+                }
+                return;
+            }
+            
+            bool foundMatch = false;
+            foreach (var constructor in constructors)
+            {
+                if (constructor.Parameters.Count == constr.Arguments.Count)
+                {
+                    foundMatch = true;
+                    
+                    // Проверяем типы аргументов
+                    for (int i = 0; i < constructor.Parameters.Count; i++)
+                    {
+                        var argType = InferExpressionType(constr.Arguments[i]);
+                        var paramType = constructor.Parameters[i].Type.Name;
+                        
+                        if (!AreTypesCompatible(argType, paramType) && argType != "Unknown")
+                        {
+                            _errors.Add($"Argument {i+1} type mismatch in '{constr.ClassName}' constructor. Expected: {paramType}, Got: {argType}");
+                        }
+                    }
+                    break;
+                }
+            }
+            
+            if (!foundMatch)
+            {
+                var availableArities = string.Join(", ", constructors.Select(c => c.Parameters.Count.ToString()));
+                _errors.Add($"No matching constructor found for '{constr.ClassName}' with {constr.Arguments.Count} arguments. Available constructors: ({availableArities})");
+            }
+        }
+
+        private void CheckConstructorCallsInConstructor(ConstructorDeclaration constructor, ProgramNode program)
         {
             _symbolTable.EnterScope();
             
@@ -1479,7 +1534,11 @@ namespace OCompiler.Semantic
                         {
                             CheckBuiltInConstructorCall(constr);
                         }
-                        else if (!_hierarchy.ClassExists(constr.ClassName))
+                        else if (_hierarchy.ClassExists(constr.ClassName))
+                        {
+                            CheckUserDefinedConstructorCall(constr, program);
+                        }
+                        else
                         {
                             _errors.Add($"Constructor call for unknown class '{constr.ClassName}'");
                         }
@@ -1496,14 +1555,17 @@ namespace OCompiler.Semantic
                 
                 foreach (var constructorCall in constructorCalls)
                 {
-                    if (!_hierarchy.ClassExists(constructorCall.ClassName) && 
-                        !_hierarchy.IsBuiltInClass(constructorCall.ClassName))
-                    {
-                        _errors.Add($"Constructor call for unknown class '{constructorCall.ClassName}'");
-                    }
-                    else if (_hierarchy.IsBuiltInClass(constructorCall.ClassName))
+                    if (_hierarchy.IsBuiltInClass(constructorCall.ClassName))
                     {
                         CheckBuiltInConstructorCall(constructorCall);
+                    }
+                    else if (_hierarchy.ClassExists(constructorCall.ClassName))
+                    {
+                        CheckUserDefinedConstructorCall(constructorCall, program);
+                    }
+                    else
+                    {
+                        _errors.Add($"Constructor call for unknown class '{constructorCall.ClassName}'");
                     }
                 }
             }
