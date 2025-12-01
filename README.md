@@ -15,6 +15,7 @@ The `O` language is Object-Oriented programming language with support of OOP.
 2. Setup the env
 
 ``` shell
+dotnet restore
 dotnet build
 ```
 
