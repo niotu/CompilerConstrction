@@ -103,6 +103,15 @@ public class Program
 
     private static void CompileFile(string fileName)
     {
+        // Parse optional entry point class name
+        var args = Environment.GetCommandLineArgs();
+        string? entryPoint = null;
+        int entryIdx = Array.IndexOf(args, "--entry-point");
+        if (entryIdx >= 0 && entryIdx + 1 < args.Length)
+        {
+            entryPoint = args[entryIdx + 1];
+        }
+        
         // ============================================================
         // PHASE 1: LEXICAL ANALYSIS
         // ============================================================
@@ -145,14 +154,14 @@ public class Program
         // ============================================================
         // PHASE 4: OPTIMIZATION
         // ============================================================
-        ast = OptimizeAST(ast);
+        ast = OptimizeAST(ast, entryPoint);
         
         // ============================================================
         // PHASE 5: CODE GENERATION
         // ============================================================
         if (!Environment.GetCommandLineArgs().Contains("--no-codegen"))
         {
-            GenerateCode(ast, classHierarchy, fileName);
+            GenerateCode(ast, classHierarchy, fileName, entryPoint);
         }
         else
         {
@@ -230,13 +239,13 @@ public class Program
         return classHierarchy;
     }
     
-    private static ProgramNode OptimizeAST(ProgramNode ast)
+    private static ProgramNode OptimizeAST(ProgramNode ast, string? entryPoint)
     {
         if (!Environment.GetCommandLineArgs().Contains("--no-optimize"))
         {
             Console.WriteLine("**[ INFO ] Starting AST optimizations...");
             var optimizer = new Optimizer();
-            ast = optimizer.Optimize(ast);
+            ast = optimizer.Optimize(ast, entryPoint);
             
             if (Environment.GetCommandLineArgs().Contains("--ast"))
             {
@@ -250,7 +259,7 @@ public class Program
         return ast;
     }
 
-    private static void GenerateCode(ProgramNode ast, ClassHierarchy hierarchy, string sourceFileName)
+    private static void GenerateCode(ProgramNode ast, ClassHierarchy hierarchy, string sourceFileName, string? entryPoint)
     {
         Console.WriteLine("**[ INFO ] Starting code generation...");
         
@@ -272,12 +281,9 @@ public class Program
 
             Console.WriteLine("**[ OK ] Code generation completed successfully!");
             var args = Environment.GetCommandLineArgs();
-            // Parse optional entry point class name
-            string? entryPoint = null;
-            int entryIdx = Array.IndexOf(args, "--entry-point");
-            if (entryIdx >= 0 && entryIdx + 1 < args.Length)
+            
+            if (entryPoint != null)
             {
-                entryPoint = args[entryIdx + 1];
                 Console.WriteLine($"**[ INFO ] Entry point class requested: {entryPoint}");
             }
 
