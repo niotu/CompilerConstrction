@@ -84,25 +84,16 @@ namespace OCompiler.Semantic
         }
     }
 
-    public class Symbol
+    public class Symbol(string name, string type, string? genericParam = null)
     {
-        public string Name { get; }
-        public string Type { get; }
-        public bool IsInitialized { get; set; }
-        public bool IsUsed { get; set; }
-        public string GenericParameter { get; }
-        public int? ArraySize { get; set; }
+        public string Name { get; } = name;
+        public string Type { get; } = type;
+        public bool IsInitialized { get; set; } = false;
+        public bool IsUsed { get; set; } = false;
+        public string GenericParameter { get; } = genericParam;
+        public int? ArraySize { get; set; } = null;
         public ExpressionNode? Initializer { get; set; }
 
-        public Symbol(string name, string type, string genericParam = null)
-        {
-            Name = name;
-            Type = type;
-            IsInitialized = false;
-            IsUsed = false;
-            GenericParameter = genericParam;
-            ArraySize = null;
-        }
         public string GetFullTypeName()
         {
             if (!string.IsNullOrEmpty(GenericParameter))

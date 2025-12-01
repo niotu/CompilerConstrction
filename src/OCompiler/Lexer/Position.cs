@@ -6,18 +6,11 @@ namespace OCompiler.Lexer;
 /// <summary>
 /// Position in source code (line, column, optional file name)
 /// </summary>
-public readonly struct Position : IEquatable<Position>
+public readonly struct Position(int line, int column, string fileName = "") : IEquatable<Position>
 {
-    public int Line { get; }
-    public int Column { get; }
-    public string FileName { get; }
-
-    public Position(int line, int column, string fileName = "")
-    {
-        Line = Math.Max(1, line);
-        Column = Math.Max(1, column);
-        FileName = fileName ?? string.Empty;
-    }
+    public int Line { get; } = Math.Max(1, line);
+    public int Column { get; } = Math.Max(1, column);
+    public string FileName { get; } = fileName ?? string.Empty;
 
     public override string ToString()
     {

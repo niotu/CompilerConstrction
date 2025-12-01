@@ -4,13 +4,13 @@ using System.Text;
 
 namespace OCompiler.Lexer;
 
-public class OLexer
+public class OLexer(string sourceCode, string fileName)
 {
-    private readonly string _sourceCode;
-    private readonly string _fileName;
-    private int _position;
-    private int _line;
-    private int _column;
+    private readonly string _sourceCode = sourceCode ?? throw new ArgumentNullException(nameof(sourceCode));
+    private readonly string _fileName = fileName ?? "<unknown>";
+    private int _position = 0;
+    private int _line = 1;
+    private int _column = 1;
     
     // Keywords mapping to token types 
     private static readonly Dictionary<string, TokenType> Keywords = new()
@@ -33,15 +33,6 @@ public class OLexer
         { "true", TokenType.BOOLEAN_LITERAL },
         { "false", TokenType.BOOLEAN_LITERAL }
     };
-
-    public OLexer(string sourceCode, string fileName)
-    {
-        _sourceCode = sourceCode ?? throw new ArgumentNullException(nameof(sourceCode));
-        _fileName = fileName ?? "<unknown>";
-        _position = 0;
-        _line = 1;
-        _column = 1;
-    }
 
     /// <summary>
     /// Tokenize whole source code

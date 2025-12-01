@@ -14,10 +14,9 @@ namespace OCompiler.Parser
 
     public abstract class BodyElement : AstNode { }
 
-    public class ProgramNode : AstNode
+    public class ProgramNode(List<ClassDeclaration> classes) : AstNode
     {
-        public List<ClassDeclaration> Classes { get; }
-        public ProgramNode(List<ClassDeclaration> classes) => Classes = classes;
+        public List<ClassDeclaration> Classes { get; } = classes;
 
         public override void Print(string indent = "")
         {
@@ -27,20 +26,12 @@ namespace OCompiler.Parser
         }
     }
 
-    public class ClassDeclaration : AstNode
+    public class ClassDeclaration(string name, string genericParam, string extension, List<MemberDeclaration> members) : AstNode
     {
-        public string Name { get; }
-        public string GenericParameter { get; }
-        public string Extension { get; }
-        public List<MemberDeclaration> Members { get; }
-
-        public ClassDeclaration(string name, string genericParam, string extension, List<MemberDeclaration> members)
-        {
-            Name = name;
-            GenericParameter = genericParam;
-            Extension = extension;
-            Members = members;
-        }
+        public string Name { get; } = name;
+        public string GenericParameter { get; } = genericParam;
+        public string Extension { get; } = extension;
+        public List<MemberDeclaration> Members { get; } = members;
 
         public override void Print(string indent = "")
         {
@@ -56,15 +47,11 @@ namespace OCompiler.Parser
 
     public abstract class MemberDeclaration : BodyElement { }
 
-    public class VariableDeclaration : MemberDeclaration
+    public class VariableDeclaration(string identifier, ExpressionNode expr) : MemberDeclaration
     {
-        public string Identifier { get; }
-        public ExpressionNode Expression { get; set; }
-        public VariableDeclaration(string identifier, ExpressionNode expr)
-        {
-            Identifier = identifier;
-            Expression = expr;
-        }
+        public string Identifier { get; } = identifier;
+        public ExpressionNode Expression { get; set; } = expr;
+
         public override void Print(string indent = "")
         {
             Console.WriteLine($"{indent}VariableDeclaration: {Identifier}");
@@ -72,15 +59,11 @@ namespace OCompiler.Parser
         }
     }
 
-    public class MethodDeclaration : MemberDeclaration
+    public class MethodDeclaration(MethodHeaderNode header, MethodBodyNode body) : MemberDeclaration
     {
-        public MethodHeaderNode Header { get; }
-        public MethodBodyNode Body { get; }
-        public MethodDeclaration(MethodHeaderNode header, MethodBodyNode body)
-        {
-            Header = header;
-            Body = body;
-        }
+        public MethodHeaderNode Header { get; } = header;
+        public MethodBodyNode Body { get; } = body;
+
         public override void Print(string indent = "")
         {
             Console.WriteLine(indent + "MethodDeclaration:");
@@ -90,15 +73,11 @@ namespace OCompiler.Parser
         }
     }
 
-    public class ConstructorDeclaration : MemberDeclaration
+    public class ConstructorDeclaration(List<ParameterDeclaration> parameters, MethodBodyNode body) : MemberDeclaration
     {
-        public List<ParameterDeclaration> Parameters { get; }
-        public MethodBodyNode Body { get; }
-        public ConstructorDeclaration(List<ParameterDeclaration> parameters, MethodBodyNode body)
-        {
-            Parameters = parameters;
-            Body = body;
-        }
+        public List<ParameterDeclaration> Parameters { get; } = parameters;
+        public MethodBodyNode Body { get; } = body;
+
         public override void Print(string indent = "")
         {
             Console.WriteLine(indent + "ConstructorDeclaration:");
@@ -116,15 +95,11 @@ namespace OCompiler.Parser
 
     public abstract class Statement : BodyElement { }
 
-    public class Assignment : Statement
+    public class Assignment(string id, ExpressionNode expr) : Statement
     {
-        public string Identifier { get; }
-        public ExpressionNode Expression { get; set; }
-        public Assignment(string id, ExpressionNode expr)
-        {
-            Identifier = id;
-            Expression = expr;
-        }
+        public string Identifier { get; } = id;
+        public ExpressionNode Expression { get; set; } = expr;
+
         public override void Print(string indent = "")
         {
             Console.WriteLine($"{indent}Assignment: {Identifier}");
@@ -132,15 +107,11 @@ namespace OCompiler.Parser
         }
     }
 
-    public class WhileLoop : Statement
+    public class WhileLoop(ExpressionNode cond, MethodBodyNode body) : Statement
     {
-        public ExpressionNode Condition { get; set; }
-        public MethodBodyNode Body { get; set; }
-        public WhileLoop(ExpressionNode cond, MethodBodyNode body)
-        {
-            Condition = cond;
-            Body = body;
-        }
+        public ExpressionNode Condition { get; set; } = cond;
+        public MethodBodyNode Body { get; set; } = body;
+
         public override void Print(string indent = "")
         {
             Console.WriteLine(indent + "WhileLoop:");
@@ -150,17 +121,12 @@ namespace OCompiler.Parser
         }
     }
 
-    public class IfStatement : Statement
+    public class IfStatement(ExpressionNode cond, MethodBodyNode thenBody, ElsePart elseBody) : Statement
     {
-        public ExpressionNode Condition { get; set; }
-        public MethodBodyNode ThenBody { get; set; }
-        public ElsePart ElseBody { get; set; }
-        public IfStatement(ExpressionNode cond, MethodBodyNode thenBody, ElsePart elseBody)
-        {
-            Condition = cond;
-            ThenBody = thenBody;
-            ElseBody = elseBody;
-        }
+        public ExpressionNode Condition { get; set; } = cond;
+        public MethodBodyNode ThenBody { get; set; } = thenBody;
+        public ElsePart ElseBody { get; set; } = elseBody;
+
         public override void Print(string indent = "")
         {
             Console.WriteLine(indent + "IfStatement:");
@@ -175,10 +141,9 @@ namespace OCompiler.Parser
         }
     }
 
-    public class ElsePart : AstNode
+    public class ElsePart(MethodBodyNode body) : AstNode
     {
-        public MethodBodyNode Body { get; }
-        public ElsePart(MethodBodyNode body) => Body = body;
+        public MethodBodyNode Body { get; } = body;
 
         public override void Print(string indent = "")
         {
@@ -187,10 +152,9 @@ namespace OCompiler.Parser
         }
     }
 
-    public class ReturnStatement : Statement
+    public class ReturnStatement(ExpressionNode expr) : Statement
     {
-        public ExpressionNode Expression { get; set; }
-        public ReturnStatement(ExpressionNode expr) => Expression = expr;
+        public ExpressionNode Expression { get; set; } = expr;
 
         public override void Print(string indent = "")
         {
@@ -199,10 +163,9 @@ namespace OCompiler.Parser
         }
     }
 
-    public class MethodBodyNode : AstNode
+    public class MethodBodyNode(List<BodyElement> elements) : AstNode
     {
-        public List<BodyElement> Elements { get; }
-        public MethodBodyNode(List<BodyElement> elements) => Elements = elements;
+        public List<BodyElement> Elements { get; } = elements;
 
         public override void Print(string indent = "")
         {
@@ -213,10 +176,9 @@ namespace OCompiler.Parser
 
     public abstract class ExpressionNode : AstNode { }
 
-    public class IntegerLiteral : ExpressionNode
+    public class IntegerLiteral(int value) : ExpressionNode
     {
-        public int Value { get; }
-        public IntegerLiteral(int value) => Value = value;
+        public int Value { get; } = value;
 
         public override void Print(string indent = "")
         {
@@ -224,10 +186,9 @@ namespace OCompiler.Parser
         }
     }
 
-    public class RealLiteral : ExpressionNode
+    public class RealLiteral(double value) : ExpressionNode
     {
-        public double Value { get; }
-        public RealLiteral(double value) => Value = value;
+        public double Value { get; } = value;
 
         public override void Print(string indent = "")
         {
@@ -235,10 +196,9 @@ namespace OCompiler.Parser
         }
     }
 
-    public class BooleanLiteral : ExpressionNode
+    public class BooleanLiteral(bool value) : ExpressionNode
     {
-        public bool Value { get; }
-        public BooleanLiteral(bool value) => Value = value;
+        public bool Value { get; } = value;
 
         public override void Print(string indent = "")
         {
@@ -254,10 +214,9 @@ namespace OCompiler.Parser
         }
     }
 
-    public class IdentifierExpression : ExpressionNode
+    public class IdentifierExpression(string name) : ExpressionNode
     {
-        public string Name { get; }
-        public IdentifierExpression(string name) => Name = name;
+        public string Name { get; } = name;
 
         public override void Print(string indent = "")
         {
@@ -265,16 +224,10 @@ namespace OCompiler.Parser
         }
     }
 
-    public class MemberAccessExpression : ExpressionNode
+    public class MemberAccessExpression(ExpressionNode target, ExpressionNode member) : ExpressionNode
     {
-        public ExpressionNode Target { get; set; }
-        public ExpressionNode Member { get; set; }
-        
-        public MemberAccessExpression(ExpressionNode target, ExpressionNode member)
-        {
-            Target = target;
-            Member = member;
-        }
+        public ExpressionNode Target { get; set; } = target;
+        public ExpressionNode Member { get; set; } = member;
 
         public override void Print(string indent = "")
         {
@@ -285,26 +238,20 @@ namespace OCompiler.Parser
             Member.Print(indent + "    ");
         }
     }
-    public class ExpressionStatement : BodyElement
+    public class ExpressionStatement(ExpressionNode expr) : BodyElement
     {
-        public ExpressionNode Expression { get; set; }
-        public ExpressionStatement(ExpressionNode expr) => Expression = expr;
-        
+        public ExpressionNode Expression { get; set; } = expr;
+
         public override void Print(string indent = "")
         {
             Console.WriteLine(indent + "ExpressionStatement:");
             Expression.Print(indent + "  ");
         }
     }
-    public class ParameterDeclaration : AstNode
+    public class ParameterDeclaration(string id, ClassNameNode type) : AstNode
     {
-        public string Identifier { get; }
-        public ClassNameNode Type { get; }
-        public ParameterDeclaration(string id, ClassNameNode type)
-        {
-            Identifier = id;
-            Type = type;
-        }
+        public string Identifier { get; } = id;
+        public ClassNameNode Type { get; } = type;
 
         public override void Print(string indent = "")
     {
@@ -315,17 +262,11 @@ namespace OCompiler.Parser
     }
     }
 
-    public class MethodHeaderNode : AstNode
+    public class MethodHeaderNode(string name, List<ParameterDeclaration> parameters, string returnType) : AstNode
     {
-        public string Name { get; }
-        public List<ParameterDeclaration> Parameters { get; }
-        public string ReturnType { get; }
-        public MethodHeaderNode(string name, List<ParameterDeclaration> parameters, string returnType)
-        {
-            Name = name;
-            Parameters = parameters;
-            ReturnType = returnType;
-        }
+        public string Name { get; } = name;
+        public List<ParameterDeclaration> Parameters { get; } = parameters;
+        public string ReturnType { get; } = returnType;
 
         public override void Print(string indent = "")
         {
@@ -334,16 +275,10 @@ namespace OCompiler.Parser
                 param.Print(indent + "  ");
         }
     }
-    public class ClassNameNode : AstNode
+    public class ClassNameNode(string name, string genericParam) : AstNode
     {
-        public string Name { get; }
-        public string GenericParameter { get; }
-        
-        public ClassNameNode(string name, string genericParam)
-        {
-            Name = name;
-            GenericParameter = genericParam;
-        }
+        public string Name { get; } = name;
+        public string GenericParameter { get; } = genericParam;
 
         public override void Print(string indent = "")
         {
@@ -354,10 +289,9 @@ namespace OCompiler.Parser
         }
     }
 
-    public class ExpressionDotSequence : ExpressionNode
+    public class ExpressionDotSequence(List<ExpressionNode> expressions) : ExpressionNode
     {
-        public List<ExpressionNode> Expressions { get; }
-        public ExpressionDotSequence(List<ExpressionNode> expressions) => Expressions = expressions;
+        public List<ExpressionNode> Expressions { get; } = expressions;
 
         public override void Print(string indent = "")
         {
@@ -367,18 +301,11 @@ namespace OCompiler.Parser
         }
     }
 
-    public class ConstructorInvocation : ExpressionNode
+    public class ConstructorInvocation(string className, string genericParam, List<ExpressionNode> args) : ExpressionNode
     {
-        public string ClassName { get; }
-        public string GenericParameter { get; }
-        public List<ExpressionNode> Arguments { get; }
-        
-        public ConstructorInvocation(string className, string genericParam, List<ExpressionNode> args)
-        {
-            ClassName = className;
-            GenericParameter = genericParam;
-            Arguments = args;
-        }
+        public string ClassName { get; } = className;
+        public string GenericParameter { get; } = genericParam;
+        public List<ExpressionNode> Arguments { get; } = args;
 
         public override void Print(string indent = "")
         {
@@ -397,15 +324,10 @@ namespace OCompiler.Parser
         }
     }
 
-    public class FunctionalCall : ExpressionNode
+    public class FunctionalCall(ExpressionNode function, List<ExpressionNode> args) : ExpressionNode
     {
-        public ExpressionNode Function { get; set; }
-        public List<ExpressionNode> Arguments { get; set; }
-        public FunctionalCall(ExpressionNode function, List<ExpressionNode> args)
-        {
-            Function = function;
-            Arguments = args;
-        }
+        public ExpressionNode Function { get; set; } = function;
+        public List<ExpressionNode> Arguments { get; set; } = args;
 
         public override void Print(string indent = "")
         {
