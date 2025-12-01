@@ -1340,13 +1340,34 @@ namespace OCompiler.Semantic
                 _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
             }
             
-            // Добавляем переменные метода
+            // Добавляем переменные метода и сразу проверяем их конструкторы
             foreach (var varDecl in method.Body.Elements.OfType<VariableDeclaration>())
             {
                 if (varDecl.Expression is ConstructorInvocation constr)
                 {
-                    _symbolTable.AddSymbol(varDecl.Identifier, 
-                        new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                    var symbol = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                    
+                    // Сохраняем размер массива если это Array
+                    if (constr.ClassName == "Array" && constr.Arguments.Count == 1)
+                    {
+                        var arraySize = TryEvalConstInt(constr.Arguments[0]);
+                        if (arraySize.HasValue)
+                        {
+                            symbol.ArraySize = arraySize.Value;
+                        }
+                    }
+                    
+                    _symbolTable.AddSymbol(varDecl.Identifier, symbol);
+                    
+                    // Проверяем конструктор сразу
+                    if (_hierarchy.IsBuiltInClass(constr.ClassName))
+                    {
+                        CheckBuiltInConstructorCall(constr);
+                    }
+                    else if (!_hierarchy.ClassExists(constr.ClassName))
+                    {
+                        _errors.Add($"Constructor call for unknown class '{constr.ClassName}'");
+                    }
                 }
                 else
                 {
@@ -1355,6 +1376,7 @@ namespace OCompiler.Semantic
                 }
             }
             
+            // Проверяем конструкторы в выражениях (не в var declarations)
             var constructorCalls = CollectConstructorCalls(method.Body);
         
             foreach (var constructorCall in constructorCalls)
@@ -1431,15 +1453,36 @@ namespace OCompiler.Semantic
                 _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
             }
             
-            // Добавляем переменные конструктора
+            // Добавляем переменные конструктора и сразу проверяем их конструкторы
             if (constructor.Body != null)
             {
                 foreach (var varDecl in constructor.Body.Elements.OfType<VariableDeclaration>())
                 {
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
-                        _symbolTable.AddSymbol(varDecl.Identifier, 
-                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                        var symbol = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                        
+                        // Сохраняем размер массива если это Array
+                        if (constr.ClassName == "Array" && constr.Arguments.Count == 1)
+                        {
+                            var arraySize = TryEvalConstInt(constr.Arguments[0]);
+                            if (arraySize.HasValue)
+                            {
+                                symbol.ArraySize = arraySize.Value;
+                            }
+                        }
+                        
+                        _symbolTable.AddSymbol(varDecl.Identifier, symbol);
+                        
+                        // Проверяем конструктор сразу
+                        if (_hierarchy.IsBuiltInClass(constr.ClassName))
+                        {
+                            CheckBuiltInConstructorCall(constr);
+                        }
+                        else if (!_hierarchy.ClassExists(constr.ClassName))
+                        {
+                            _errors.Add($"Constructor call for unknown class '{constr.ClassName}'");
+                        }
                     }
                     else
                     {
@@ -1448,13 +1491,19 @@ namespace OCompiler.Semantic
                     }
                 }
                 
+                // Проверяем конструкторы в выражениях (не в var declarations)
                 var constructorCalls = CollectConstructorCalls(constructor.Body);
                 
                 foreach (var constructorCall in constructorCalls)
                 {
-                    if (!_hierarchy.ClassExists(constructorCall.ClassName))
+                    if (!_hierarchy.ClassExists(constructorCall.ClassName) && 
+                        !_hierarchy.IsBuiltInClass(constructorCall.ClassName))
                     {
                         _errors.Add($"Constructor call for unknown class '{constructorCall.ClassName}'");
+                    }
+                    else if (_hierarchy.IsBuiltInClass(constructorCall.ClassName))
+                    {
+                        CheckBuiltInConstructorCall(constructorCall);
                     }
                 }
             }
@@ -1474,10 +1523,7 @@ namespace OCompiler.Semantic
                 {
                     CollectConstructorCallsFromExpression(exprStmt.Expression, result);
                 }
-                else if (element is VariableDeclaration varDecl)
-                {
-                    CollectConstructorCallsFromExpression(varDecl.Expression, result);
-                }
+                // Пропускаем VariableDeclaration - они проверяются отдельно выше
                 else if (element is Assignment assignment)
                 {
                     CollectConstructorCallsFromExpression(assignment.Expression, result);
@@ -2320,8 +2366,19 @@ namespace OCompiler.Semantic
                 {
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
-                        _symbolTable.AddSymbol(varDecl.Identifier, 
-                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                        var symbol = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                        
+                        // Сохраняем размер массива если это Array
+                        if (constr.ClassName == "Array" && constr.Arguments.Count == 1)
+                        {
+                            var arraySize = TryEvalConstInt(constr.Arguments[0]);
+                            if (arraySize.HasValue)
+                            {
+                                symbol.ArraySize = arraySize.Value;
+                            }
+                        }
+                        
+                        _symbolTable.AddSymbol(varDecl.Identifier, symbol);
                     }
                     else
                     {
@@ -2358,8 +2415,19 @@ namespace OCompiler.Semantic
                 {
                     if (varDecl.Expression is ConstructorInvocation constr)
                     {
-                        _symbolTable.AddSymbol(varDecl.Identifier, 
-                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                        var symbol = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                        
+                        // Сохраняем размер массива если это Array
+                        if (constr.ClassName == "Array" && constr.Arguments.Count == 1)
+                        {
+                            var arraySize = TryEvalConstInt(constr.Arguments[0]);
+                            if (arraySize.HasValue)
+                            {
+                                symbol.ArraySize = arraySize.Value;
+                            }
+                        }
+                        
+                        _symbolTable.AddSymbol(varDecl.Identifier, symbol);
                     }
                     else
                     {
@@ -2463,6 +2531,14 @@ namespace OCompiler.Semantic
             {
                 CheckArrayBoundsInExpression(funcCall.Function);
                 foreach (var arg in funcCall.Arguments)
+                {
+                    CheckArrayBoundsInExpression(arg);
+                }
+            }
+            else if (expr is ConstructorInvocation constr)
+            {
+                // Рекурсивно проверяем аргументы конструктора
+                foreach (var arg in constr.Arguments)
                 {
                     CheckArrayBoundsInExpression(arg);
                 }
@@ -2709,6 +2785,15 @@ namespace OCompiler.Semantic
                 if (int.TryParse(intLiteral.Value.ToString(), out var v)) return v;
                 return null;
             }
+            // Обрабатываем конструктор Integer
+            if (expr is ConstructorInvocation constr && constr.ClassName == "Integer")
+            {
+                if (constr.Arguments.Count == 1 && constr.Arguments[0] is IntegerLiteral inner)
+                {
+                    if (int.TryParse(inner.Value.ToString(), out var v)) return v;
+                }
+            }
+            // Обрабатываем функциональный вызов Integer (на случай если парсер создает FunctionalCall)
             if (expr is FunctionalCall fc && fc.Function is IdentifierExpression id && id.Name == "Integer")
             {
                 if (fc.Arguments.Count == 1 && fc.Arguments[0] is IntegerLiteral inner)
