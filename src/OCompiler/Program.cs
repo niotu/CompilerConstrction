@@ -99,10 +99,6 @@ public class Program
         Console.WriteLine("  tests/03_ArraySquare.o");
         Console.WriteLine("  tests/04_InheritanceValid.o");
         Console.WriteLine();
-        Console.WriteLine("** Code generation examples:");
-        Console.WriteLine("  OCompiler tests/01_Hello.o --run");
-        Console.WriteLine("  OCompiler tests/08_RecursiveFactorial.o --save-assembly factorial.dll");
-        Console.WriteLine();
     }
 
     private static void CompileFile(string fileName)
@@ -436,67 +432,6 @@ public class Program
             Console.WriteLine($"**[ WARN ] Failed to copy OCompiler.dll: {ex.Message}");
         }
     }
-
-
-// Helper function to get types from ModuleBuilder
-private static List<Type> GetTypesFromModuleBuilder(ModuleBuilder moduleBuilder)
-{
-    var types = new List<Type>();
-    
-    try
-    {
-        // Use reflection to access internal _typeBuilderDict field
-        var typeBuilderDictField = typeof(ModuleBuilder).GetField(
-            "_typeBuilderDict",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        
-        if (typeBuilderDictField != null)
-        {
-            var typeBuilderDict = typeBuilderDictField.GetValue(moduleBuilder);
-            if (typeBuilderDict is System.Collections.IDictionary dict)
-            {
-                foreach (System.Collections.DictionaryEntry entry in dict)
-                {
-                    if (entry.Value is TypeBuilder tb)
-                    {
-                        // Check that type is completed
-                        try
-                        {
-                            var createdType = tb.CreateType();
-                            if (createdType != null)
-                            {
-                                types.Add(createdType);
-                            }
-                        }
-                        catch
-                        {
-                            // Type already created, try to get it via reflection
-                            var createdTypeField = typeof(TypeBuilder).GetField(
-                                "_bakedRuntimeType",
-                                BindingFlags.NonPublic | BindingFlags.Instance);
-                            
-                            if (createdTypeField != null)
-                            {
-                                var createdType = createdTypeField.GetValue(tb) as Type;
-                                if (createdType != null)
-                                {
-                                    types.Add(createdType);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"**[ DEBUG ] Failed to get types via reflection: {ex.Message}");
-    }
-    
-    return types;
-}
-
 
     // ============================================================
     // HELPER FUNCTIONS
