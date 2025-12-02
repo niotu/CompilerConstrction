@@ -505,58 +505,54 @@ namespace OCompiler.Semantic
                     _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
                 }
                 
-                // Process variables in method body
-                var methodVariables = method.Body.Elements.OfType<VariableDeclaration>().ToList();
-                
-                foreach (var varDecl in methodVariables)
-                {
-                    // Проверяем дубликаты
-                    if (_symbolTable.ExistsInCurrentScope(varDecl.Identifier))
-                    {
-                        _errors.Add($"Variable '{varDecl.Identifier}' is already declared in this scope");
-                        continue;
-                    }
-                    
-                    if (varDecl.Expression is ConstructorInvocation constr)
-                    {
-                        var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
-                        if (constr.ClassName == "Array")
-                        {
-                            sym.Initializer = constr; // Сохраняем конструктор массива
-                            
-                            if (constr.Arguments.Count > 0)
-                            {
-                                var firstArg = constr.Arguments[0];
-                                if (firstArg is FunctionalCall fc)
-                                {
-                                    if (fc.Arguments.Count > 0 && fc.Arguments[0] is IntegerLiteral il)
-                                    {
-                                        // size value available in il.Value
-                                    }
-                                }
-                            }
-                        }
-                        _symbolTable.AddSymbol(varDecl.Identifier, sym);
-                    }
-                    else
-                    {
-                        var exprType = InferExpressionType(varDecl.Expression);
-                        var sym = new Symbol(varDecl.Identifier, exprType, null);
-                        sym.Initializer = varDecl.Expression;
-                        _symbolTable.AddSymbol(varDecl.Identifier, sym);
-                    }
-                }
-                
-                // Check remaining elements
+                // Обрабатываем элементы ПОСЛЕДОВАТЕЛЬНО: проверяем использования ДО добавления переменной
                 foreach (var element in method.Body.Elements)
                 {
                     if (element is VariableDeclaration varDecl)
                     {
-                        // Для переменных проверяем их инициализаторы
+                        // Сначала проверяем инициализатор (он не должен использовать эту же переменную)
                         CheckExpressionDeclarations(varDecl.Expression);
+                        
+                        // Проверяем дубликаты
+                        if (_symbolTable.ExistsInCurrentScope(varDecl.Identifier))
+                        {
+                            _errors.Add($"Variable '{varDecl.Identifier}' is already declared in this scope");
+                            continue;
+                        }
+                        
+                        // Теперь добавляем переменную в таблицу символов
+                        if (varDecl.Expression is ConstructorInvocation constr)
+                        {
+                            var sym = new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter);
+                            if (constr.ClassName == "Array")
+                            {
+                                sym.Initializer = constr; // Сохраняем конструктор массива
+                                
+                                if (constr.Arguments.Count > 0)
+                                {
+                                    var firstArg = constr.Arguments[0];
+                                    if (firstArg is FunctionalCall fc)
+                                    {
+                                        if (fc.Arguments.Count > 0 && fc.Arguments[0] is IntegerLiteral il)
+                                        {
+                                            // size value available in il.Value
+                                        }
+                                    }
+                                }
+                            }
+                            _symbolTable.AddSymbol(varDecl.Identifier, sym);
+                        }
+                        else
+                        {
+                            var exprType = InferExpressionType(varDecl.Expression);
+                            var sym = new Symbol(varDecl.Identifier, exprType, null);
+                            sym.Initializer = varDecl.Expression;
+                            _symbolTable.AddSymbol(varDecl.Identifier, sym);
+                        }
                     }
                     else
                     {
+                        // Для остальных элементов (statements, expressions) проверяем использования
                         CheckElementDeclarations(element);
                     }
                 }
@@ -2280,33 +2276,43 @@ namespace OCompiler.Semantic
                 _symbolTable.AddSymbol(param.Identifier, new Symbol(param.Identifier, param.Type.Name, param.Type.GenericParameter));
             }
             
-            // Обрабатываем переменные в теле конструктора
+            // Обрабатываем элементы ПОСЛЕДОВАТЕЛЬНО
             if (constructor.Body != null)
             {
-                var constructorVariables = constructor.Body.Elements.OfType<VariableDeclaration>().ToList();
-                
-                foreach (var varDecl in constructorVariables)
+                foreach (var element in constructor.Body.Elements)
                 {
-                    // Проверяем дубликаты
-                    if (_symbolTable.ExistsInCurrentScope(varDecl.Identifier))
+                    if (element is VariableDeclaration varDecl)
                     {
-                        _errors.Add($"Variable '{varDecl.Identifier}' is already declared in this scope");
-                        continue;
-                    }
-                    
-                    if (varDecl.Expression is ConstructorInvocation constr)
-                    {
-                        _symbolTable.AddSymbol(varDecl.Identifier, 
-                            new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
-                    }
-                    else if (varDecl.Expression is FunctionalCall funcCall && funcCall.Function is IdentifierExpression funcIdent)
-                    {
-                        // Обработка var a : Integer(10) - это FunctionalCall с IdentifierExpression
-                        var typeName = funcIdent.Name;
-                        if (_hierarchy.IsBuiltInClass(typeName) || _hierarchy.ClassExists(typeName))
+                        // Сначала проверяем инициализатор
+                        CheckExpressionDeclarations(varDecl.Expression);
+                        
+                        // Проверяем дубликаты
+                        if (_symbolTable.ExistsInCurrentScope(varDecl.Identifier))
+                        {
+                            _errors.Add($"Variable '{varDecl.Identifier}' is already declared in this scope");
+                            continue;
+                        }
+                        
+                        // Теперь добавляем переменную
+                        if (varDecl.Expression is ConstructorInvocation constr)
                         {
                             _symbolTable.AddSymbol(varDecl.Identifier, 
-                                new Symbol(varDecl.Identifier, typeName, null));
+                                new Symbol(varDecl.Identifier, constr.ClassName, constr.GenericParameter));
+                        }
+                        else if (varDecl.Expression is FunctionalCall funcCall && funcCall.Function is IdentifierExpression funcIdent)
+                        {
+                            // Обработка var a : Integer(10) - это FunctionalCall с IdentifierExpression
+                            var typeName = funcIdent.Name;
+                            if (_hierarchy.IsBuiltInClass(typeName) || _hierarchy.ClassExists(typeName))
+                            {
+                                _symbolTable.AddSymbol(varDecl.Identifier, 
+                                    new Symbol(varDecl.Identifier, typeName, null));
+                            }
+                            else
+                            {
+                                var exprType = InferExpressionType(varDecl.Expression);
+                                _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
+                            }
                         }
                         else
                         {
@@ -2316,21 +2322,7 @@ namespace OCompiler.Semantic
                     }
                     else
                     {
-                        var exprType = InferExpressionType(varDecl.Expression);
-                        _symbolTable.AddSymbol(varDecl.Identifier, new Symbol(varDecl.Identifier, exprType, null));
-                    }
-                }
-                
-                // Проверяем остальные элементы конструктора
-                foreach (var element in constructor.Body.Elements)
-                {
-                    if (element is VariableDeclaration varDecl)
-                    {
-                        // Для переменных проверяем их инициализаторы (аргументы уже должны быть проверены)
-                        CheckExpressionDeclarations(varDecl.Expression);
-                    }
-                    else
-                    {
+                        // Для остальных элементов проверяем использования
                         CheckElementDeclarations(element);
                     }
                 }
