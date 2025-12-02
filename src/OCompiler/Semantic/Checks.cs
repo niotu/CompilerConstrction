@@ -24,10 +24,10 @@ namespace OCompiler.Semantic
             // 0. Check for duplicate class names
             CheckDuplicateClasses(program);
             
-            // 0. Check class hierarchy (MUST BE FIRST!)
+            // 0. Check class hierarchy
             CheckClassHierarchy(program);
             
-            // NEW: 0.5 Normalize constructor calls (FunctionalCall → ConstructorInvocation)
+            // 0.5 Normalize constructor calls (FunctionalCall → ConstructorInvocation)
             NormalizeConstructorCalls(program);
             
             // 1. Check correct keyword usage
