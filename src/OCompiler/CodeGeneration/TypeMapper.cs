@@ -6,9 +6,6 @@ using OCompiler.Semantic;
 
 namespace OCompiler.CodeGeneration
 {
-    /// <summary>
-    /// Маппинг типов языка O на типы .NET.
-    /// </summary>
     public class TypeMapper
     {
         private readonly ModuleBuilder _moduleBuilder;
