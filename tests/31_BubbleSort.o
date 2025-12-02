@@ -1,0 +1,42 @@
+class Sorter is
+    method sort(arr : Array[Integer]) is
+        var n : Integer(arr.Length())
+        var i : Integer(0)
+        
+        while i.Less(n) loop
+            var j : Integer(0)
+            while j.Less(n.Minus(Integer(1))) loop
+                var current : Integer(arr.get(j))
+                var next : Integer(arr.get(j.Plus(Integer(1))))
+                
+                if current.Greater(next) then
+                    arr.set(j, next)
+                    arr.set(j.Plus(Integer(1)), current)
+                end
+                
+                j := j.Plus(Integer(1))
+            end
+            i := i.Plus(Integer(1))
+        end
+    end
+end
+
+class Main is
+    this() is
+        var arr : Array[Integer](Integer(5))
+        arr.set(Integer(0), Integer(64))
+        arr.set(Integer(1), Integer(34))
+        arr.set(Integer(2), Integer(25))
+        arr.set(Integer(3), Integer(12))
+        arr.set(Integer(4), Integer(22))
+        
+        var sorter : Sorter()
+        sorter.sort(arr)
+        
+        var i : Integer(0)
+        while i.Less(Integer(5)) loop
+            arr.get(i).Print()
+            i := i.Plus(Integer(1))
+        end
+    end
+end

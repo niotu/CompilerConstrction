@@ -1,0 +1,45 @@
+class Fibonacci is
+    var cache : Array[Integer](20)
+    var initialized : Boolean(false)
+    
+    this() is
+        var i : Integer(0)
+        while i.Less(20) loop
+            cache.set(i, Integer(0).Minus(Integer(1)))
+            i := i.Plus(Integer(1))
+        end
+        initialized := true
+    end
+    
+    method fib(n : Integer) : Integer is
+        if n.Less(Integer(2)) then
+            return n
+        end
+        
+        var cached : Integer(cache.get(n))
+        if cached.Greater(Integer(0).Minus(Integer(1))) then
+            return cached
+        end
+        
+        var n1 : Integer(n.Minus(1))
+        var n2 : Integer(n.Minus(2))
+        var fib1 : Integer(this.fib(n1))
+        var fib2 : Integer(this.fib(n2))
+        var result : Integer(fib1.Plus(fib2))
+        
+        cache.set(n, result)
+        return result
+    end
+end
+
+class Main is
+    this() is
+        var f : Fibonacci()
+        var i : Integer(0)
+        
+        while i.Less(Integer(10)) loop
+            f.fib(i).Print()
+            i := i.Plus(1)
+        end
+    end
+end
