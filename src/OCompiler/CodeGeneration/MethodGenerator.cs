@@ -8,9 +8,6 @@ using OCompiler.Semantic;
 
 namespace OCompiler.CodeGeneration
 {
-    /// <summary>
-    /// Генератор IL-кода для методов и конструкторов.
-    /// </summary>
     public class MethodGenerator(TypeMapper typeMapper, ClassHierarchy hierarchy, CodeGenerator? codeGenerator = null, ProgramNode? programAst = null)
     {
         private readonly TypeMapper _typeMapper = typeMapper;
@@ -159,9 +156,6 @@ namespace OCompiler.CodeGeneration
             return ctorBuilder;
         }
 
-        /// <summary>
-        /// Генерирует тело конструктора класса.
-        /// </summary>
         public void GenerateConstructorBody(
             TypeBuilder typeBuilder,
             ConstructorBuilder ctorBuilder,
@@ -362,17 +356,6 @@ namespace OCompiler.CodeGeneration
             }
 
             DebugLog($"**[ DEBUG ]   Method: {methodDecl.Header.Name}({string.Join(", ", paramTypes.Select(t => t.Name))}) : {returnType.Name}");
-        }
-
-        // Старый метод для совместимости (если где-то ещё используется)
-        public void GenerateMethod(
-            TypeBuilder typeBuilder, 
-            MethodDeclaration methodDecl,
-            Dictionary<string, FieldBuilder> fields,
-            string className)
-        {
-            DeclareMethod(typeBuilder, methodDecl, className);
-            GenerateMethodBody(typeBuilder, methodDecl, fields, className);
         }
 
         private void GenerateMethodBodyContent(MethodBodyNode body)
@@ -689,20 +672,16 @@ namespace OCompiler.CodeGeneration
                 return;
             }
 
-            // Пользовательские классы
-            // Пользовательские классы
             Type type = _typeMapper.GetNetType(ctor.ClassName);
 
-            if (type is TypeBuilder) // незавершённый тип — ищем среди зарегистрированных
+            if (type is TypeBuilder)
             {
-                // 1) Сгенерировать аргументы на стек
                 var argTypes = ctor.Arguments.Select(a => _typeMapper.InferType(a)).ToArray();
                 foreach (var arg in ctor.Arguments)
                 {
                     GenerateExpression(arg);
                 }
 
-                // 2) Найти ConstructorBuilder по заранее сохранённым типам
                 if (_constructors.TryGetValue(ctor.ClassName, out var list))
                 {
                     ConstructorBuilder? match = null;
@@ -728,7 +707,6 @@ namespace OCompiler.CodeGeneration
                     $"Constructor for '{ctor.ClassName}({string.Join(", ", argTypes.Select(t => t.Name))})' not registered.");
             }
 
-            // Завершённый тип — обычная рефлексия
             var completedArgTypes = ctor.Arguments.Select(a => _typeMapper.InferType(a)).ToArray();
             var ci = type.GetConstructor(completedArgTypes);
             if (ci == null)
@@ -744,7 +722,6 @@ namespace OCompiler.CodeGeneration
 
         private void GenerateFunctionCall(FunctionalCall funcCall)
         {
-            // СЛУЧАЙ 1: Вызов конструктора встроенного типа
             if (funcCall.Function is IdentifierExpression identFunc)
             {
                 var typeName = identFunc.Name;
@@ -759,14 +736,10 @@ namespace OCompiler.CodeGeneration
                     GenerateConstructorInvocation(pseudoConstructor);
                     return;
                 }
-
-                // Прямой вызов метода без объекта запрещен
-                // Согласно спецификации Project O: "Access to a class member is represented using dotted notation"
                 throw new InvalidOperationException(
                     $"Direct function call '{typeName}' not allowed. Use 'this.{typeName}()' to call instance methods.");
             }
             
-            // СЛУЧАЙ 2: Вызов метода на объекте
             if (funcCall.Function is MemberAccessExpression memberAccess)
             {
                 var methodName = (memberAccess.Member as IdentifierExpression)?.Name;
@@ -1052,7 +1025,6 @@ namespace OCompiler.CodeGeneration
                             }
                             else
                             {
-                                // Метод void
                                 DebugLog($"**[ DEBUG ]       Method {typeName}.{methodName} returns void (from AST)");
                                 return typeof(void);
                             }

@@ -15,10 +15,6 @@ using System.Reflection.Metadata.Ecma335;
 
 namespace OCompiler.CodeGeneration
 {
-    /// <summary>
-    /// Главный класс генератора кода для языка O.
-    /// Генерирует .NET сборки из AST с использованием System.Reflection.Emit.
-    /// </summary>
     public class CodeGenerator
     {
         private readonly AssemblyBuilder _assemblyBuilder;
@@ -49,16 +45,15 @@ namespace OCompiler.CodeGeneration
             _completedTypes = new Dictionary<string, Type>();
             _classFields = new Dictionary<string, Dictionary<string, FieldBuilder>>();
 
-            // Создаём динамическую сборку
             var assemblyNameObj = new AssemblyName(assemblyName);
             
             #if NET9_0_OR_GREATER
-            // .NET 9+: Используем PersistedAssemblyBuilder для сохранения в файл
+
             _assemblyBuilder = new PersistedAssemblyBuilder(
                 assemblyNameObj,
                 typeof(object).Assembly);
             #else
-            // .NET 8 и ниже: Только выполнение в памяти
+
             _assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(
                 assemblyNameObj,
                 AssemblyBuilderAccess.RunAndCollect);
@@ -74,9 +69,6 @@ namespace OCompiler.CodeGeneration
             return _assemblyBuilder;
         }
 
-        /// <summary>
-        /// Генерирует .NET сборку из AST программы на языке O.
-        /// </summary>
         public Assembly Generate(ProgramNode program)
         {
             DebugLog("**[ DEBUG ] Phase 1: Declaring types...");
@@ -173,11 +165,8 @@ namespace OCompiler.CodeGeneration
                 il.Emit(OpCodes.Ret);
             }
 
-            // Finalize the Program type
             var programTypeCreated = programType.CreateTypeInfo().AsType();
 
-            // Store the entry point method for later use in SaveToFile
-            // (PersistedAssemblyBuilder doesn't have SetEntryPoint, we'll handle this during Save)
             _entryPointMethod = mainMethod;
             Console.WriteLine($"**[ OK ] Entry point method registered: <Program>.Main(string[]) → {entryClassName}.this()");
         }
@@ -325,7 +314,6 @@ namespace OCompiler.CodeGeneration
                 DebugLog($"**[ DEBUG ] Type: {typeName}");
                 DebugLog($"**[ DEBUG ]   - Full name: {type.FullName}");
                 DebugLog($"**[ DEBUG ]   - Type class: {type.GetType().Name}");
-                // DebugLog($"**[ DEBUG ]   - Is runtime type: {type is RuntimeType}");
                 DebugLog($"**[ DEBUG ]   - Assembly: {type.Assembly.GetName().Name}");
                 DebugLog($"**[ DEBUG ]   - Base type: {type.BaseType?.Name ?? "none"}");
                 
@@ -469,7 +457,6 @@ namespace OCompiler.CodeGeneration
             
             il.Emit(OpCodes.Call, baseConstructor!);
 
-            // ИСПРАВЛЕНИЕ: Инициализация полей класса (используем MethodGenerator для генерации выражений)
             var tempFields = new Dictionary<string, FieldBuilder>();
             var tempLocals = new Dictionary<string, LocalBuilder>();
             var tempLocalTypes = new Dictionary<string, Type>();
@@ -496,9 +483,6 @@ namespace OCompiler.CodeGeneration
             DebugLog($"**[ DEBUG ]   Generated default constructor");
         }
 
-        /// <summary>
-        /// Сохраняет сборку в файл (.exe или .dll).
-        /// </summary>
         public void SaveToFile(string outputPath, bool asExecutable = false)
         {
             #if NET9_0_OR_GREATER
@@ -565,22 +549,6 @@ namespace OCompiler.CodeGeneration
                 "Current runtime: .NET " + Environment.Version + ". " +
                 "Use --run flag to execute in-memory, or upgrade to .NET 9.");
             #endif
-        }
-
-        /// <summary>
-        /// Получает завершённый тип по имени.
-        /// </summary>
-        public Type? GetCompletedType(string typeName)
-        {
-            return _completedTypes.TryGetValue(typeName, out var type) ? type : null;
-        }
-
-        /// <summary>
-        /// Возвращает все сгенерированные типы.
-        /// </summary>
-        public IReadOnlyDictionary<string, Type> GetAllTypes()
-        {
-            return _completedTypes;
         }
     }
 }
