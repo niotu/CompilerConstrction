@@ -16,7 +16,6 @@ namespace OCompiler.Semantic
             classes = RemoveUnusedMethods(classes, program, entryPointClassName ?? "Main");
             classes = RemoveUnusedVariables(classes);
             
-            // Constant folding
             classes = ConstantFold(classes);
             classes = SimplifyConditionals(classes);
             classes = RemoveUnreachableCode(classes);
@@ -445,11 +444,9 @@ namespace OCompiler.Semantic
                     break;
                     
                 case IdentifierExpression ident:
-                    // Идентификаторы сами по себе не являются вызовами методов
                     break;
                     
                 default:
-                    // Для других типов выражений рекурсивно обрабатываем дочерние выражения
                     ProcessChildExpressions(expr, used, currentClass, program);
                     break;
             }
@@ -490,12 +487,9 @@ namespace OCompiler.Semantic
             
             if (targetClass != null && methodName != null)
             {
-                // Проверяем, это ли вызов конструктора (создание объекта вида: Dog() или Animal())
-                // Если это прямой вызов IdentifierExpression и это имя класса, то это конструктор
                 bool isConstructorCall = false;
                 if (funcCall.Function is IdentifierExpression funcIdent)
                 {
-                    // Это прямой вызов вроде Dog() или Animal() или Max()
                     var classDecl = program.Classes.FirstOrDefault(c => c.Name == funcIdent.Name);
                     if (classDecl != null)
                     {
@@ -514,23 +508,19 @@ namespace OCompiler.Semantic
                             string fullMethodName = $"{actualMethodClass}.{methodName}";
                             used.Add(fullMethodName);
                             
-                            // Добавляем все переопределённые методы в иерархии наследования 
-                            // (методы с тем же именем в производных классах)
                             AddOverridingMethods(targetClass, methodName, used, program);
                         }
                     }
                 }
                 else if (!isConstructorCall)
                 {
-                    // Это обычный вызов метода через объект. Нужно найти, в каком классе метод реально определён
                     var actualMethodClass = FindMethodClassInHierarchy(methodName, targetClass, program);
                     if (actualMethodClass != null)
                     {
                         string fullMethodName = $"{actualMethodClass}.{methodName}";
                         used.Add(fullMethodName);
                         
-                        // Добавляем все переопределённые методы в иерархии наследования 
-                        // (методы с тем же именем в производных классах)
+                        
                         AddOverridingMethods(targetClass, methodName, used, program);
                     }
                 }
@@ -642,25 +632,19 @@ namespace OCompiler.Semantic
                     return currentClass;
                     
                 case MemberAccessExpression memberAccess:
-                    // Вызов метода через объект: obj.Method()
-                    // Если цель - простой идентификатор: берем его объявленный тип
                     if (memberAccess.Target is IdentifierExpression targetIdent)
                     {
                         return DetermineVariableType(targetIdent.Name, currentClass, program);
                     }
-                    // Если цель - вложенный доступ к члену: рекурсивно определяем тип
                     if (memberAccess.Target is MemberAccessExpression nestedMemberAccess)
                     {
                         return DetermineTargetClass(nestedMemberAccess, currentClass, program);
                     }
-                    // Если цель - вызов функции/метода (например: calc.Add(5).Add(3)),
-                    // то нужно определить класс по внутренней функции этого вызова
                     if (memberAccess.Target is FunctionalCall innerFuncCall)
                     {
                         // Определяем, к какому классу относится функция внутреннего вызова
                         return DetermineTargetClass(innerFuncCall.Function, currentClass, program);
                     }
-                    // Если цель - конструктор (например: Foo().Bar), возвращаем имя класса конструктора
                     if (memberAccess.Target is ConstructorInvocation ctorInv)
                     {
                         return ctorInv.ClassName;
@@ -857,7 +841,6 @@ namespace OCompiler.Semantic
                 {
                     if (ci.Arguments[0] is IntegerLiteral lit1)
                         return new IntegerLiteral(lit1.Value);
-                    // Integer(5 + 3) where 5 + 3 может быть свёрнуто в другом месте
                 }
 
                 // Boolean(true) → BooleanLiteral("true")
@@ -991,10 +974,6 @@ namespace OCompiler.Semantic
         private bool IsIntLit(ExpressionNode e) => e is IntegerLiteral;
         private bool IsBoolLit(ExpressionNode e) => e is BooleanLiteral;
 
-        // ============================================
-        // 2) Simplify IF / WHILE when condition is literal
-        // ============================================
-
         private List<ClassDeclaration> SimplifyConditionals(List<ClassDeclaration> classes)
         {
             return classes.Select(c => new ClassDeclaration(
@@ -1048,9 +1027,6 @@ namespace OCompiler.Semantic
             return list;
         }
 
-        // ============================================
-        // 3) Remove unreachable code after return
-        // ============================================
 
         private List<ClassDeclaration> RemoveUnreachableCode(List<ClassDeclaration> classes)
         {
@@ -1098,9 +1074,6 @@ namespace OCompiler.Semantic
             return res;
         }
 
-        // ============================================
-        // 4) Remove unused variables
-        // ============================================
 
         private List<ClassDeclaration> RemoveUnusedVariables(List<ClassDeclaration> classes)
         {

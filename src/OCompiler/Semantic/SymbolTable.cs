@@ -12,7 +12,7 @@ namespace OCompiler.Semantic
 
         public SymbolTable()
         {
-            EnterScope(); // Глобальная область видимости
+            EnterScope();
         }
 
         public void EnterScope() => _scopes.Push(new Dictionary<string, Symbol>());

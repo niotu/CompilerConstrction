@@ -94,7 +94,6 @@ public class ClassHierarchy
             if (field != null)
                 return field;
             
-            // Ищем в базовом классе
             current = string.IsNullOrEmpty(current.Extension) ? null : GetBaseClass(current);
         }
         return null;
@@ -166,13 +165,10 @@ public class ClassHierarchy
         {
             var list = new List<BuiltInMethodInfo>();
 
-            // Точное совпадение имени (для методов без параметров)
             if (classInfo.Methods.TryGetValue(methodName, out var exact))
             {
                 list.Add(exact);
             }
-
-            // Совпадение по префиксу для перегрузок (формат Name(Type))
             list.AddRange(classInfo.Methods
                 .Where(kv => kv.Key.StartsWith($"{methodName}("))
                 .Select(kv => kv.Value));
@@ -388,7 +384,7 @@ public class ClassHierarchy
         // Конструкторы List
         list.Constructors.AddRange(new[]
         {
-            new BuiltInConstructorInfo(), // Пустой конструктор
+            new BuiltInConstructorInfo(),
             new BuiltInConstructorInfo 
             { 
                 Parameters = { new BuiltInParameterInfo { Name = "element", Type = "T" } } 
@@ -416,11 +412,9 @@ public class ClassHierarchy
         _builtInClasses["List"] = list;
     }
 
-    // Вспомогательный метод для добавления бинарных операций (методов с одним параметром)
     private void AddBinaryMethod(BuiltInClassInfo classInfo, string methodName, 
                            string paramType, string returnType, string paramName = "other")
     {
-        // Создаем уникальный ключ, включая типы параметров
         string uniqueKey = $"{methodName}({paramType})";
         
         classInfo.Methods.Add(uniqueKey, new BuiltInMethodInfo 
@@ -431,7 +425,6 @@ public class ClassHierarchy
     }
 }
 
-// Структуры для встроенных классов
 public class BuiltInClassInfo
 {
     public string Name { get; set; } = "";
